@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../context/AuthContext';
 import API from '../api';
 
@@ -26,6 +28,7 @@ export default function SellerCenter() {
   const [lowStockCount, setLowStockCount] = useState(0);
   const [lowStockProducts, setLowStockProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     const hour = new Date().getHours();
@@ -45,6 +48,33 @@ export default function SellerCenter() {
       fetchSellerStats();
     }
   }, [user]);
+
+  const loadUnread = useCallback(async () => {
+    try {
+      let stored = {};
+      try {
+        const raw = await AsyncStorage.getItem('seller_msg_last_seen');
+        if (raw) stored = JSON.parse(raw);
+      } catch (_) {}
+      const reqResp = await API.get('/investment-requests/seller/requests', { params: { status: 'all' } });
+      const reqs = Array.isArray(reqResp?.data?.requests) ? reqResp.data.requests : [];
+      let count = 0;
+      for (const r of reqs.slice(0, 20)) {
+        try {
+          const msgsResp = await API.get(`/investment-requests/${r.id}/messages`);
+          const msgs = Array.isArray(msgsResp?.data?.messages) ? msgsResp.data.messages : [];
+          const last = msgs.length > 0 ? msgs[msgs.length - 1] : null;
+          const lastISO = last?.created_at || r.updated_at || r.created_at;
+          const lastTs = lastISO ? new Date(lastISO).getTime() : 0;
+          const seenTs = Number(stored[String(r.id)] || 0);
+          if (lastTs > seenTs) count += 1;
+        } catch (_) {}
+      }
+      setUnreadCount(count);
+    } catch (_) {}
+  }, []);
+
+  useFocusEffect(useCallback(() => { loadUnread(); const t = setInterval(() => loadUnread(), 15000); return () => clearInterval(t); }, [loadUnread]));
 
   // Fetch real seller statistics
   const fetchSellerStats = async () => {
@@ -270,8 +300,11 @@ export default function SellerCenter() {
               {user?.businessDetails?.businessName || user?.name || 'Your Business'}
             </Text>
           </View>
-          <TouchableOpacity onPress={() => handleNavigation('/notifications')}>
+          <TouchableOpacity onPress={() => handleNavigation('/seller/notifications')} style={{ position: 'relative' }}>
             <Ionicons name="notifications-outline" size={28} color="white" />
+            <View style={{ position: 'absolute', top: -4, right: -8, backgroundColor: '#ef4444', borderRadius: 10, minWidth: 18, height: 18, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: 'white' }}>
+              <Text style={{ color: 'white', fontSize: 10, fontWeight: 'bold' }}>{unreadCount}</Text>
+            </View>
           </TouchableOpacity>
         </View>
 

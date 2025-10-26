@@ -369,6 +369,33 @@ const investorConnectionController = {
         [status, connection_id]
       );
 
+      // If accepted, auto-create an investment request if one doesn't already exist
+      if (status === 'accepted') {
+        const conn = connection[0];
+        const sellerId = conn.seller_id;
+        const investorId = conn.investor_id;
+        // Check existing funding request
+        const [existing] = await db.execute(
+          `SELECT id FROM investment_requests WHERE seller_id = ? AND investor_id = ? ORDER BY created_at DESC LIMIT 1`,
+          [sellerId, investorId]
+        );
+        let requestId = existing.length > 0 ? existing[0].id : null;
+        if (!requestId) {
+          const [ins] = await db.execute(
+            `INSERT INTO investment_requests (seller_id, investor_id, requested_amount, status, admin_approved)
+             VALUES (?, ?, 0, 'pending', FALSE)`,
+            [sellerId, investorId]
+          );
+          requestId = ins.insertId;
+          // Seed a welcome message
+          await db.execute(
+            `INSERT INTO investment_request_messages (request_id, sender_id, message)
+             VALUES (?, ?, ?)`,
+            [requestId, investorId, 'Connection accepted. You can now chat and share documents in this request.']
+          );
+        }
+      }
+
       res.json({
         success: true,
         message: `Connection request ${status} successfully`

@@ -4,7 +4,7 @@ import * as SecureStore from 'expo-secure-store';
 
 // Base URL for your backend API
 const BASE_URL = 'http://192.168.43.219:5000/api';
- // Your current network IP
+// Your current network IP
 
 // Create axios instance with base configuration
 const api = axios.create({
@@ -41,14 +41,14 @@ export const authAPI = {
       // For forms with files, use FormData
       if (userData.role === 'seller' || userData.role === 'investor') {
         const formData = new FormData();
-        
+
         // Add all text fields
         Object.keys(userData).forEach(key => {
           if (key !== 'businessImage' && key !== 'idImage' && key !== 'bankProofImage' && userData[key] !== null) {
             formData.append(key, userData[key]);
           }
         });
-        
+
         // Add image files if they exist
         if (userData.businessImage) {
           formData.append('businessImage', {
@@ -71,7 +71,7 @@ export const authAPI = {
             name: 'bankproof.jpg'
           });
         }
-        
+
         const response = await api.post('/users/register', formData, {
           headers: {
             'Content-Type': 'multipart/form-data',
@@ -111,9 +111,9 @@ export const authAPI = {
   // Reset password
   resetPassword: async (verificationCode, newPassword) => {
     try {
-      const response = await api.post('/users/reset-password', { 
-        verificationCode, 
-        newPassword 
+      const response = await api.post('/users/reset-password', {
+        verificationCode,
+        newPassword
       });
       return response.data;
     } catch (error) {
@@ -227,9 +227,9 @@ export const investorAPI = {
   // Respond to connection request
   respondToRequest: async (connectionId, status) => {
     try {
-      const response = await api.post('/investor-connections/respond', { 
+      const response = await api.post('/investor-connections/respond', {
         connection_id: connectionId,
-        status 
+        status
       });
       return response.data;
     } catch (error) {
@@ -310,21 +310,21 @@ export const investorAPI = {
     }
   },
 
-  // Send message
+  // Send message (use funding request chat)
   sendMessage: async (requestId, message) => {
     try {
-      const response = await api.post(`/investor/requests/${requestId}/messages`, { message });
+      const response = await api.post(`/investment-requests/${requestId}/messages`, { message });
       return response.data;
     } catch (error) {
       throw error.response?.data || { error: error.message };
     }
   },
 
-  // List messages
+  // List messages (use funding request chat)
   listMessages: async (requestId, options = {}) => {
     try {
       const queryParams = new URLSearchParams(options).toString();
-      const response = await api.get(`/investor/requests/${requestId}/messages${queryParams ? `?${queryParams}` : ''}`);
+      const response = await api.get(`/investment-requests/${requestId}/messages${queryParams ? `?${queryParams}` : ''}`);
       return response.data;
     } catch (error) {
       throw error.response?.data || { error: error.message };

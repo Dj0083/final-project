@@ -16,7 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import { investorAPI } from '../../api';
+import API, { investorAPI } from '../../api';
 
 const InvestmentProgressScreen = () => {
   const router = useRouter();
@@ -26,26 +26,24 @@ const InvestmentProgressScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
 
   const loadInvestments = useCallback(async (silent = false) => {
-    if (!router.isReady) return;
     if (!silent) setLoading(true);
     try {
-      const [approved, funded] = await Promise.all([
-        investorAPI.listRequests({ status: 'approved' }),
-        investorAPI.listRequests({ status: 'funded' }),
-      ]);
-      const listA = Array.isArray(approved) ? approved : [];
-      const listF = Array.isArray(funded) ? funded : [];
-      const normalized = [...listA.filter(r => (r.admin_approved || r.adminApproved)), ...listF];
-      const map = new Map();
-      normalized.forEach(r => map.set(String(r.id), r));
-      const list = Array.from(map.values());
+      // Fetch investor requests directly
+      const res = await API.get('/investment-requests/investor/requests', { params: { status: 'all' } });
+      const reqs = Array.isArray(res?.data) ? res.data : (Array.isArray(res?.data?.requests) ? res.data.requests : []);
+
+      // Consider approved or funded as active investments
+      const list = reqs.filter(r => {
+        const st = String(r.status || '').toLowerCase();
+        return st === 'approved' || st === 'funded';
+      });
       setInvestments(list);
 
       let totalAmount = 0;
       const byCategory = {};
       const dealerSet = new Set();
       list.forEach(r => {
-        const amt = parseFloat(r.funding_amount || r.amount || 0) || 0;
+        const amt = parseFloat(r.funded_amount || r.funding_amount || r.amount || 0) || 0;
         totalAmount += amt;
         const cat = r.category || r.business_category || 'Investment';
         byCategory[cat] = (byCategory[cat] || 0) + amt;
@@ -59,20 +57,11 @@ const InvestmentProgressScreen = () => {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [router.isReady]);
+  }, []);
 
-  useEffect(() => {
-    loadInvestments(false);
-  }, [loadInvestments]);
+  useEffect(() => { loadInvestments(false); }, [loadInvestments]);
 
-  useFocusEffect(
-    useCallback(() => {
-      // Refresh on focus and poll every 30s while focused
-      loadInvestments(true);
-      const id = setInterval(() => loadInvestments(true), 30000);
-      return () => clearInterval(id);
-    }, [loadInvestments])
-  );
+  useFocusEffect(useCallback(() => { loadInvestments(true); return () => {}; }, [loadInvestments]));
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

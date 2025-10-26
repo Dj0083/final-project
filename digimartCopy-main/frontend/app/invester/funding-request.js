@@ -37,23 +37,142 @@ const FundingRequestScreen = () => {
   const [documents, setDocuments] = useState([]);
   const [selectedConn, setSelectedConn] = useState(null);
   const [profile, setProfile] = useState(null);
+  const [docInfoMap, setDocInfoMap] = useState({}); // { [requestId]: { hasFA: bool, hasSlip: bool } }
 
   const load = async (opts = {}) => {
     try {
       if (!opts.silent) setLoading(true);
       setError('');
       console.log('📥 Fetching connection requests for investor...');
-      
+
       const response = await investorAPI.getInvestorRequests(filterStatus);
       const list = response.requests || [];
       setRequests(list);
-      
+
       console.log('✅ Received', list.length, 'requests');
+      // Prefetch documents to decide button visibility (limit to first 20)
+      const entries = await Promise.all(
+        list.slice(0, 20).map(async (r) => {
+          try {
+            const reqId = r?.investment_request_id || r?.request_id || r?.requestId;
+            if (!reqId) return [null, null];
+            const docsRes = await api.get(`/api/investment-requests/${reqId}/documents`);
+            const docs = Array.isArray(docsRes?.data?.documents) ? docsRes.data.documents : [];
+            const lower = (s) => String(s || '').toLowerCase();
+            const hasFA = docs.some(d => lower(d.doc_type) === 'final_agreement');
+            const hasSlip = docs.some(d => lower(d.doc_type) === 'payment_slip');
+            return [String(reqId), { hasFA, hasSlip }];
+          } catch (_) {
+            return [null, null];
+          }
+        })
+      );
+      const map = {};
+      entries.forEach(([k, v]) => { if (k) map[k] = v; });
+      setDocInfoMap(map);
     } catch (e) {
       console.error('❌ Error loading requests:', e);
       setError(e?.error || 'Failed to load requests');
     } finally {
       if (!opts.silent) setLoading(false);
+    }
+  };
+
+  const uploadPaymentSlipFromList = async (request) => {
+    try {
+      let reqId = request?.investment_request_id || request?.request_id || request?.requestId;
+      if (!reqId) {
+        const sellerId = request?.seller_id;
+        if (!sellerId) {
+          Alert.alert('Payment Slip', 'Cannot create funding request: missing seller_id on this item.');
+          return;
+        }
+        setModalLoading(true);
+        const createRes = await api.post('/api/investment-requests/create', { seller_id: sellerId, requested_amount: 0 });
+        reqId = createRes.data?.request_id;
+        if (!reqId) throw new Error('Failed to create funding request');
+      }
+      // Ensure admin approved and final agreement exists
+      const isAdminApproved = !!(request.admin_approved || request.adminApproved || String(request.status) === 'approved');
+      // fetch docs to verify FA
+      const docsRes = await api.get(`/api/investment-requests/${reqId}/documents`);
+      const docs = Array.isArray(docsRes?.data?.documents) ? docsRes.data.documents : [];
+      const lower = (s) => String(s || '').toLowerCase();
+      const hasFA = docs.some(d => lower(d.doc_type) === 'final_agreement');
+      if (!isAdminApproved || !hasFA) {
+        Alert.alert('Not Ready', 'Payment slip will be available after admin approves the final agreement.');
+        return;
+      }
+      const pick = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: false });
+      if (pick.canceled) return;
+      const asset = pick.assets?.[0];
+      if (!asset) return;
+      setModalLoading(true);
+      const form = new FormData();
+      const fileName = asset.name || `payment_slip_${Date.now()}.pdf`;
+      const fileType = asset.mimeType || 'application/pdf';
+      form.append('document', { uri: asset.uri, type: fileType, name: fileName });
+      form.append('doc_type', 'payment_slip');
+      await api.post(`/api/investment-requests/${reqId}/documents`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      Alert.alert('Uploaded', 'Payment slip uploaded');
+    } catch (e) {
+      console.error('Payment slip upload error:', e?.response?.data || e?.message || e);
+      const msg = e?.response?.data?.error || e?.message || 'Failed to upload';
+      Alert.alert('Error', String(msg));
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
+  const uploadFinalAgreementFromList = async (request) => {
+    try {
+      let reqId = request?.investment_request_id || request?.request_id || request?.requestId;
+      // If no funding request exists yet, create one using seller_id
+      if (!reqId) {
+        const sellerId = request?.seller_id;
+        if (!sellerId) {
+          Alert.alert('Final Agreement', 'Cannot create funding request: missing seller_id on this item.');
+          return;
+        }
+        setModalLoading(true);
+        const createRes = await api.post('/api/investment-requests/create', { seller_id: sellerId, requested_amount: 0 });
+        reqId = createRes.data?.request_id;
+        if (!reqId) {
+          throw new Error('Failed to create funding request');
+        }
+      }
+      // Check if a final agreement already exists; if yes open it instead of uploading
+      const docsRes = await api.get(`/api/investment-requests/${reqId}/documents`);
+      const docs = Array.isArray(docsRes.data?.documents) ? docsRes.data.documents : [];
+      const lower = (s) => String(s || '').toLowerCase();
+      const fa = docs.find(d => lower(d.doc_type) === 'final_agreement');
+      if (fa) {
+        const url = `${API_BASE}${fa.file_path}`;
+        require('react-native').Linking.openURL(url);
+        return;
+      }
+      if (String(request.status) !== 'accepted' && String(request.status) !== 'approved') {
+        Alert.alert('Not Approved', 'You can upload final agreement after investor approval.');
+        return;
+      }
+      const pick = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: false });
+      if (pick.canceled) return;
+      const asset = pick.assets?.[0];
+      if (!asset) return;
+      setModalLoading(true);
+      const form = new FormData();
+      const fileName = asset.name || `final_agreement_${Date.now()}.pdf`;
+      const fileType = asset.mimeType || 'application/pdf';
+      form.append('document', { uri: asset.uri, type: fileType, name: fileName });
+      form.append('doc_type', 'final_agreement');
+      await api.post(`/api/investment-requests/${reqId}/documents`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      Alert.alert('Uploaded', 'Final agreement uploaded');
+    } catch (e) {
+      console.error('Final agreement upload error:', e?.response?.data || e?.message || e);
+      const msg = e?.response?.data?.error || e?.message || 'Failed to upload';
+      Alert.alert('Error', String(msg));
+    } finally {
+      setModalLoading(false);
     }
   };
 
@@ -114,7 +233,7 @@ const FundingRequestScreen = () => {
     const url = `${API_BASE}${d.file_path}`;
     require('react-native').Linking.openURL(url);
   };
-  const shareDocument = () => {};
+  const shareDocument = () => { };
   const sendMsg = async () => {
     if (!selectedConn || !message.trim()) return;
     try {
@@ -173,9 +292,13 @@ const FundingRequestScreen = () => {
   };
 
   const RequestCard = ({ request }) => {
-    const statusColor = request.status === 'pending' ? '#fb923c' : 
-                       request.status === 'accepted' ? '#10b981' : '#ef4444';
+    const statusColor = request.status === 'pending' ? '#fb923c' :
+      request.status === 'accepted' ? '#10b981' : '#ef4444';
     const statusText = request.status.toUpperCase();
+    const reqId = request?.investment_request_id || request?.request_id || request?.requestId;
+    const info = reqId ? docInfoMap[String(reqId)] : null;
+    const isAdminApproved = !!(request.admin_approved || request.adminApproved || String(request.status) === 'approved');
+    const showSlip = info?.hasSlip || (isAdminApproved && info?.hasFA);
 
     return (
       <View style={styles.requestCard}>
@@ -290,6 +413,22 @@ const FundingRequestScreen = () => {
               <Ionicons name="document-attach-outline" size={18} color="#475569" />
               <Text style={styles.secondaryButtonText}>Documents</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.secondaryButton, { flex: 1 }]}
+              onPress={() => uploadFinalAgreementFromList(request)}
+            >
+              <Ionicons name="document-text-outline" size={18} color="#475569" />
+              <Text style={styles.secondaryButtonText}>Final Agreement</Text>
+            </TouchableOpacity>
+            {showSlip && (
+              <TouchableOpacity
+                style={[styles.secondaryButton, { flex: 1 }]}
+                onPress={() => uploadPaymentSlipFromList(request)}
+              >
+                <Ionicons name="card-outline" size={18} color="#475569" />
+                <Text style={styles.secondaryButtonText}>Payment Slip</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </LinearGradient>
       </View>

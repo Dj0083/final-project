@@ -6,6 +6,16 @@ const investmentRequestController = require('../controllers/investmentRequestCon
 // Static and collection routes first (to avoid :id capturing them)
 // Pending agreements for notification badge
 router.get('/pending-agreements/list', auth, investmentRequestController.listPendingAgreements);
+// Create a funding request
+router.post('/create', auth, investmentRequestController.createRequest);
+// Role-based stats (investor/seller/admin)
+router.get('/stats', auth, investmentRequestController.getStats);
+// Find existing request between seller (current) and investor
+router.get('/between', auth, investmentRequestController.findBetween);
+// Seller: list own funding requests
+router.get('/seller/requests', auth, investmentRequestController.listSellerRequests);
+// Investor: list own funding requests
+router.get('/investor/requests', auth, investmentRequestController.listInvestorRequests);
 
 // Messages (chat)
 router.get('/:id/messages', auth, investmentRequestController.listMessages);

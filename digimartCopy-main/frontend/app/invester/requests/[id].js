@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, FlatList, TextInput, Alert, RefreshControl } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
@@ -6,6 +6,7 @@ import * as Linking from 'expo-linking';
 import { Ionicons } from '@expo/vector-icons';
 import { investmentRequestsAPI } from '../../../api';
 import { API_BASE } from '../../../config/api';
+import { useFocusEffect } from '@react-navigation/native';
 
 export default function InvestorFundingRequestDetail() {
   const { id } = useLocalSearchParams();
@@ -20,8 +21,12 @@ export default function InvestorFundingRequestDetail() {
   const [message, setMessage] = useState('');
   const [uploading, setUploading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [approvalPrompted, setApprovalPrompted] = useState(false);
+  const loadingRef = useRef(false);
 
   const loadAll = useCallback(async () => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     try {
       setLoading(true);
       const [reqRes, msgRes, docRes] = await Promise.all([
@@ -37,18 +42,43 @@ export default function InvestorFundingRequestDetail() {
       Alert.alert('Error', e?.error || 'Failed to load request');
     } finally {
       setLoading(false);
+      loadingRef.current = false;
     }
   }, [requestId]);
 
+  // Load on focus only (prevents double initial + flicker)
+  // Refresh when screen gains focus (ensures latest status/docs)
+  useFocusEffect(
+    useCallback(() => {
+      loadAll();
+      return () => {};
+    }, [loadAll])
+  );
+
+  // When request becomes approved, prompt investor to open messages and upload slip
   useEffect(() => {
-    loadAll();
-  }, [loadAll]);
+    if (!request) return;
+    const isApprovedNow = String(request.status) === 'approved';
+    if (isApprovedNow && !approvalPrompted) {
+      setApprovalPrompted(true);
+      Alert.alert(
+        'Approved',
+        'Your funding request was approved. Open messages to see admin notes and upload your payment slip.',
+        [
+          { text: 'Later', style: 'cancel' },
+          { text: 'Open Messages', onPress: () => {} }
+        ]
+      );
+    }
+  }, [request, approvalPrompted]);
 
   const onRefresh = async () => {
     setRefreshing(true);
     await loadAll();
     setRefreshing(false);
   };
+
+  // Removed auto-reload on admin-approval message to avoid request storms; UI already reflects latest load
 
   const onSend = async () => {
     if (!message.trim()) return;
@@ -66,9 +96,16 @@ export default function InvestorFundingRequestDetail() {
     }
   };
 
-  const onUpload = async () => {
+  const onUploadSlip = async () => {
+    // If a payment slip already exists, open it instead of uploading another
+    const lower = (s) => String(s || '').toLowerCase();
+    const existingSlip = documents.find(d => lower(d.doc_type) === 'payment_slip');
+    if (existingSlip) {
+      openDoc(existingSlip);
+      return;
+    }
     if (String(request.status) !== 'approved') {
-      Alert.alert('Not Approved', 'You can upload the final agreement after admin approval.');
+      Alert.alert('Not Approved', 'You can upload the payment slip after admin approval.');
       return;
     }
     try {
@@ -77,15 +114,45 @@ export default function InvestorFundingRequestDetail() {
       const asset = pick.assets?.[0];
       if (!asset) return;
       setUploading(true);
-      const name = asset.name || `document_${Date.now()}`;
+      const name = asset.name || `payment_slip_${Date.now()}.pdf`;
+      const mime = asset.mimeType || 'application/pdf';
+      await investmentRequestsAPI.uploadDocument(requestId, asset.uri, mime, name, 'payment_slip');
+      const { documents: freshDocs } = await investmentRequestsAPI.listDocuments(requestId);
+      setDocuments(freshDocs || []);
+      Alert.alert('Uploaded', 'Payment slip uploaded successfully');
+    } catch (e) {
+      console.error('Upload error', e);
+      Alert.alert('Error', e?.error || 'Failed to upload');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  
+
+  const onUploadFinalAgreement = async () => {
+    // If final agreement already exists, open it instead of uploading another
+    const lower = (s) => String(s || '').toLowerCase();
+    const existingFA = documents.find(d => lower(d.doc_type) === 'final_agreement');
+    if (existingFA) {
+      openDoc(existingFA);
+      return;
+    }
+    try {
+      const pick = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: false });
+      if (pick.canceled) return;
+      const asset = pick.assets?.[0];
+      if (!asset) return;
+      setUploading(true);
+      const name = asset.name || `final_agreement_${Date.now()}.pdf`;
       const mime = asset.mimeType || 'application/pdf';
       await investmentRequestsAPI.uploadDocument(requestId, asset.uri, mime, name, 'final_agreement');
       const { documents: freshDocs } = await investmentRequestsAPI.listDocuments(requestId);
       setDocuments(freshDocs || []);
-      Alert.alert('Uploaded', 'Document uploaded successfully');
+      Alert.alert('Uploaded', 'Final agreement uploaded successfully');
     } catch (e) {
-      console.error('Upload error', e);
-      Alert.alert('Error', e?.error || 'Failed to upload');
+      console.error('Upload final agreement error', e);
+      Alert.alert('Error', e?.error || 'Failed to upload final agreement');
     } finally {
       setUploading(false);
     }
@@ -114,6 +181,9 @@ export default function InvestorFundingRequestDetail() {
   }
 
   const isApproved = String(request.status) === 'approved';
+  const isAdminApproved = !!(request.admin_approved || request.adminApproved || isApproved);
+  const hasFinalAgreement = Array.isArray(documents) && documents.some(d => String(d.doc_type || '').toLowerCase() === 'final_agreement');
+  const hasPaymentSlip = Array.isArray(documents) && documents.some(d => String(d.doc_type || '').toLowerCase() === 'payment_slip');
   const isPending = String(request.status) === 'pending';
 
   return (
@@ -148,12 +218,22 @@ export default function InvestorFundingRequestDetail() {
             <Ionicons name="document-attach-outline" size={18} color="#111827" />
             <Text style={{ marginLeft: 6, fontWeight: '700', color: '#111827' }}>Documents</Text>
           </View>
-          <TouchableOpacity onPress={onUpload} disabled={uploading || !isApproved} style={{ backgroundColor: isApproved ? '#3b82f6' : '#9ca3af', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8 }}>
-            <Text style={{ color: 'white', fontWeight: '600' }}>{uploading ? 'Uploading…' : 'Upload Final Agreement (PDF)'}</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {(hasPaymentSlip || (isAdminApproved && hasFinalAgreement)) && (
+              <TouchableOpacity onPress={onUploadSlip} disabled={uploading || (!hasPaymentSlip && !(isAdminApproved && hasFinalAgreement))} style={{ backgroundColor: hasPaymentSlip ? '#0ea5e9' : '#3b82f6', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8 }}>
+                <Text style={{ color: 'white', fontWeight: '600' }}>{uploading ? 'Uploading…' : (hasPaymentSlip ? 'View Payment Slip' : 'Upload Payment Slip')}</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity onPress={onUploadFinalAgreement} disabled={uploading} style={{ backgroundColor: hasFinalAgreement ? '#0ea5e9' : '#111827', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8 }}>
+              <Text style={{ color: 'white', fontWeight: '600' }}>{uploading ? 'Uploading…' : (hasFinalAgreement ? 'View Final Agreement' : 'Upload Final Agreement')}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-        {!isApproved && (
-          <Text style={{ color: '#6b7280', marginBottom: 8 }}>You can upload the final agreement after admin approves the request.</Text>
+        {!hasFinalAgreement && (
+          <Text style={{ color: '#6b7280', marginBottom: 8 }}>Upload the final agreement now. Admin will review and approve it before you can submit a payment slip.</Text>
+        )}
+        {isAdminApproved && !hasFinalAgreement && (
+          <Text style={{ color: '#6b7280', marginBottom: 8 }}>Upload the final agreement first to enable payment slip upload.</Text>
         )}
         {documents.length === 0 ? (
           <View style={{ alignItems: 'center', paddingVertical: 10 }}>
@@ -181,6 +261,13 @@ export default function InvestorFundingRequestDetail() {
           <Ionicons name="chatbubble-ellipses-outline" size={18} color="#111827" />
           <Text style={{ marginLeft: 6, fontWeight: '700', color: '#111827' }}>Messages</Text>
         </View>
+        {/* Admin approval notification banner */}
+        {Array.isArray(messages) && messages.some(m => String(m.message || '').toLowerCase().includes('approved by admin')) && (
+          <View style={{ backgroundColor: '#ecfeff', borderColor: '#06b6d4', borderWidth: 1, padding: 10, borderRadius: 10, marginBottom: 8 }}>
+            <Text style={{ color: '#075985', fontWeight: '700' }}>Approved by Admin</Text>
+            <Text style={{ color: '#0e7490', marginTop: 4 }}>Please proceed to upload your payment slip for verification.</Text>
+          </View>
+        )}
         <FlatList
           data={messages}
           keyExtractor={(m) => String(m.id)}

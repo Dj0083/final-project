@@ -20,6 +20,7 @@ export default function SellerFundingRequestDetail() {
   const [message, setMessage] = useState('');
   const [uploading, setUploading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [viewing, setViewing] = useState(false);
 
   const loadAll = useCallback(async () => {
     try {
@@ -92,6 +93,25 @@ export default function SellerFundingRequestDetail() {
     Linking.openURL(url);
   };
 
+  const onViewFinalAgreement = async () => {
+    try {
+      setViewing(true);
+      // ensure we have the latest documents
+      const { documents: freshDocs } = await investmentRequestsAPI.listDocuments(requestId);
+      const docs = freshDocs || documents || [];
+      const final = docs.find((d) => String(d.doc_type || '').toLowerCase() === 'final_agreement');
+      if (!final) {
+        Alert.alert('Final Agreement', 'No final agreement uploaded yet');
+        return;
+      }
+      openDoc(final);
+    } catch (e) {
+      Alert.alert('Error', e?.error || 'Failed to open final agreement');
+    } finally {
+      setViewing(false);
+    }
+  };
+
   if (loading) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc' }}>
@@ -115,11 +135,16 @@ export default function SellerFundingRequestDetail() {
   return (
     <View style={{ flex: 1, backgroundColor: '#f8fafc' }}>
       {/* Header */}
-      <View style={{ paddingHorizontal: 12, paddingTop: 12, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', backgroundColor: 'white' }}>
-        <TouchableOpacity onPress={() => router.back()} style={{ padding: 8, marginRight: 6 }}>
-          <Ionicons name="arrow-back" size={22} color="#111827" />
+      <View style={{ paddingHorizontal: 12, paddingTop: 12, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', justifyContent: 'space-between' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <TouchableOpacity onPress={() => router.back()} style={{ padding: 8, marginRight: 6 }}>
+            <Ionicons name="arrow-back" size={22} color="#111827" />
+          </TouchableOpacity>
+          <Text style={{ fontSize: 18, fontWeight: '700', color: '#111827' }}>Funding Request #{request.id}</Text>
+        </View>
+        <TouchableOpacity onPress={onViewFinalAgreement} style={{ paddingVertical: 6, paddingHorizontal: 10, backgroundColor: '#3b82f6', borderRadius: 8 }}>
+          <Text style={{ color: 'white', fontWeight: '700' }}>View Final Agreement</Text>
         </TouchableOpacity>
-        <Text style={{ fontSize: 18, fontWeight: '700', color: '#111827' }}>Funding Request #{request.id}</Text>
       </View>
 
       {/* Status banner */}
@@ -144,9 +169,14 @@ export default function SellerFundingRequestDetail() {
             <Ionicons name="document-attach-outline" size={18} color="#111827" />
             <Text style={{ marginLeft: 6, fontWeight: '700', color: '#111827' }}>Documents</Text>
           </View>
-          <TouchableOpacity onPress={onUpload} disabled={uploading} style={{ backgroundColor: '#111827', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8 }}>
-            <Text style={{ color: 'white', fontWeight: '600' }}>{uploading ? 'Uploading…' : 'Upload Document'}</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity onPress={onUpload} disabled={uploading} style={{ backgroundColor: '#111827', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8 }}>
+              <Text style={{ color: 'white', fontWeight: '600' }}>{uploading ? 'Uploading…' : 'Upload Document'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={onViewFinalAgreement} disabled={viewing} style={{ backgroundColor: '#3b82f6', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8 }}>
+              <Text style={{ color: 'white', fontWeight: '600' }}>{viewing ? 'Opening…' : 'View Final Agreement'}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
         {documents.length === 0 ? (
           <View style={{ alignItems: 'center', paddingVertical: 10 }}>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,10 +11,49 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
+import API from '../../api';
 
 const ReportsScreen = () => {
   const router = useRouter();
   const [selectedPeriod, setSelectedPeriod] = useState('Monthly');
+  const [snapshot, setSnapshot] = useState({ total: 0, deals: 0, awaiting: 0 });
+  const [recentFunded, setRecentFunded] = useState([]);
+
+  const loadSnapshot = useCallback(async () => {
+    try {
+      const res = await API.get('/investment-requests/stats');
+      const data = res?.data || {};
+      let awaiting = 0;
+      try {
+        const approved = await API.get('/investment-requests/investor/requests', { params: { status: 'approved' } });
+        const arr = Array.isArray(approved?.data) ? approved.data : (Array.isArray(approved?.data?.requests) ? approved.data.requests : []);
+        awaiting = arr.length;
+      } catch (_) {}
+      if (String(data.role) === 'investor') {
+        setSnapshot({ total: Number(data.total_invested || 0), deals: Number(data.active_deals || 0), awaiting });
+      }
+    } catch (_) {}
+  }, []);
+
+  const loadRecentFunded = useCallback(async () => {
+    try {
+      const res = await API.get('/investment-requests/investor/requests', { params: { status: 'funded' } });
+      const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res?.data?.requests) ? res.data.requests : []);
+      const items = list
+        .slice(0, 5)
+        .map(r => ({
+          id: String(r.id),
+          name: r.business_name || r.entrepreneur_name || 'Business',
+          amount: Number(r.funded_amount || r.funding_amount || r.amount || 0),
+          date: r.updated_at || r.created_at,
+        }));
+      setRecentFunded(items);
+    } catch (_) {}
+  }, []);
+
+  useEffect(() => { loadSnapshot(); loadRecentFunded(); }, [loadSnapshot, loadRecentFunded]);
+  useFocusEffect(useCallback(() => { loadSnapshot(); loadRecentFunded(); return () => {}; }, [loadSnapshot, loadRecentFunded]));
 
   const ReportCard = ({ title, description, date, icon, color, fileType }) => (
     <TouchableOpacity 
@@ -112,6 +151,33 @@ const ReportsScreen = () => {
       </LinearGradient>
 
       <ScrollView showsVerticalScrollIndicator={false} style={styles.content}>
+        {/* Investor Snapshot */}
+        <View style={styles.statsSection}>
+          <Text style={styles.sectionTitle}>Investor Snapshot</Text>
+          <View style={styles.statsRow}>
+            <StatCard
+              title="Total Invested"
+              value={`LKR ${formatAmount(snapshot.total)}`}
+              icon="cash"
+              color={['#22c55e', '#16a34a']}
+              subtitle="Funded deals"
+            />
+            <StatCard
+              title="Active Deals"
+              value={String(snapshot.deals)}
+              icon="briefcase"
+              color={['#3b82f6', '#2563eb']}
+              subtitle="Currently active"
+            />
+            <StatCard
+              title="Awaiting Funding"
+              value={String(snapshot.awaiting)}
+              icon="hourglass"
+              color={['#f59e0b', '#d97706']}
+              subtitle="Approved stage"
+            />
+          </View>
+        </View>
         {/* Period Filter */}
         <View style={styles.periodSection}>
           <ScrollView 
@@ -192,7 +258,25 @@ const ReportsScreen = () => {
           </View>
         </View>
 
-        {/* Recent Reports */}
+        {/* Recent Funded (live) */}
+        <View style={styles.reportsSection}>
+          <Text style={styles.sectionTitle}>Recent Funded</Text>
+          {recentFunded.length === 0 ? (
+            <Text style={{ color: '#6b7280', paddingHorizontal: 20 }}>No funded items yet</Text>
+          ) : (
+            recentFunded.map((it) => (
+              <View key={it.id} style={[styles.reportCard, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}> 
+                <View>
+                  <Text style={styles.reportTitle}>{it.name}</Text>
+                  <Text style={styles.reportDescription}>LKR {formatAmount(it.amount)}</Text>
+                </View>
+                <Text style={styles.reportDate}>{new Date(it.date).toLocaleString()}</Text>
+              </View>
+            ))
+          )}
+        </View>
+
+        {/* Recent Reports (static templates) */}
         <View style={styles.reportsSection}>
           <Text style={styles.sectionTitle}>Recent Reports</Text>
           
@@ -333,5 +417,10 @@ const styles = StyleSheet.create({
   typeName: { fontSize: 15, fontWeight: '600', color: '#1e293b', marginBottom: 3 },
   typeCount: { fontSize: 13, color: '#64748b' },
 });
+
+function formatAmount(n) {
+  const num = parseFloat(n || 0);
+  return Number.isFinite(num) ? num.toLocaleString() : '0';
+}
 
 export default ReportsScreen;

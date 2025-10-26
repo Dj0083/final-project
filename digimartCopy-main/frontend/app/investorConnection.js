@@ -19,6 +19,7 @@ export default function InvestorConnection() {
   const [loading, setLoading] = useState(true);
   const [authToken, setAuthToken] = useState(null);
   const [requestingId, setRequestingId] = useState(null);
+  const [requestedInvestorIds, setRequestedInvestorIds] = useState(new Set());
   const [chatOpen, setChatOpen] = useState(false);
   const [docsOpen, setDocsOpen] = useState(false);
   const [selectedConn, setSelectedConn] = useState(null); // connection id
@@ -27,6 +28,10 @@ export default function InvestorConnection() {
   const [connLoading, setConnLoading] = useState(false);
   const [connMsgInput, setConnMsgInput] = useState("");
   const [connUploading, setConnUploading] = useState(false);
+  const [amountModalOpen, setAmountModalOpen] = useState(false);
+  const [amountForInvestor, setAmountForInvestor] = useState({ investorId: null, value: '' });
+  const [requestAmountModalOpen, setRequestAmountModalOpen] = useState(false);
+  const [requestAmountForInvestor, setRequestAmountForInvestor] = useState({ investorId: null, name: '', value: '' });
 
   // Prefer in-memory auth token from context
   useEffect(() => {
@@ -105,6 +110,9 @@ export default function InvestorConnection() {
 
       if (response.data.success) {
         setInvitations(response.data.connections || []);
+        // Build a fast lookup of investors already requested/connected
+        const ids = new Set((response.data.connections || []).map(c => c.investor_id || c.investorId).filter(Boolean));
+        setRequestedInvestorIds(ids);
       }
     } catch (error) {
       console.error('Error fetching invitations:', error);
@@ -125,29 +133,29 @@ export default function InvestorConnection() {
   }, [authToken, activeTab]);
 
   const requestConnection = async (investor) => {
-    try {
-      setRequestingId(investor.id);
-      const response = await api.post(
-        '/api/investor-connections/request',
-        { investor_id: investor.id },
-        { headers: { Authorization: `Bearer ${authToken}` } }
-      );
+    // Open prompt to include requested amount in the connection request
+    setRequestAmountForInvestor({ investorId: investor.id, name: investor.full_name || 'Investor', value: '' });
+    setRequestAmountModalOpen(true);
+  };
 
+  const sendConnectionRequestWithAmount = async () => {
+    try {
+      const investorId = requestAmountForInvestor.investorId;
+      if (!investorId) return;
+      setRequestingId(investorId);
+      const payload = { investor_id: investorId };
+      const v = requestAmountForInvestor.value && requestAmountForInvestor.value.trim() !== '' ? Number(requestAmountForInvestor.value) : undefined;
+      if (v) payload.requested_amount = v;
+      const response = await api.post('/api/investor-connections/request', payload, { headers: { Authorization: `Bearer ${authToken}` } });
       if (response.data.success) {
-        const newConnId = response.data.connection_id;
-        Alert.alert(
-          'Success',
-          `Connection request sent to ${investor.full_name}`,
-          [
-            { text: 'Close', style: 'cancel' },
-            {
-              text: 'Open Chat',
-              onPress: () => {
-                if (newConnId) openConnectionChat(newConnId);
-              }
-            }
-          ]
-        );
+        // Remove from explore and switch to invitations
+        setInvestors(prev => prev.filter(i => i.id !== investorId));
+        setRequestAmountModalOpen(false);
+        setActiveTab('invitations');
+        await fetchInvitations();
+        // Track as requested to disable button if list reloads
+        setRequestedInvestorIds(prev => new Set(prev).add(investorId));
+        Alert.alert('Success', `Connection request sent to ${requestAmountForInvestor.name}`);
       }
     } catch (error) {
       console.error('Error sending connection request:', error);
@@ -196,6 +204,62 @@ export default function InvestorConnection() {
     setSelectedConn(connectionId);
     setDocsOpen(true);
     await loadConnectionDocuments(connectionId);
+  };
+
+  const viewFinalAgreement = async (connection) => {
+    try {
+      const investorId = connection.investor_id || connection.investorId;
+      if (!investorId) {
+        Alert.alert('Error', 'Missing investor ID');
+        return;
+      }
+      // Find existing funding request between this seller and investor
+      const findRes = await api.get('/api/investment-requests/between', {
+        params: { investor_id: investorId },
+        headers: { Authorization: `Bearer ${authToken}` }
+      });
+      const reqId = findRes?.data?.request?.id;
+      if (!findRes?.data?.exists || !reqId) {
+        Alert.alert('Not Found', 'No funding request exists yet for this connection.');
+        return;
+      }
+      // List documents and locate final agreement
+      const docsRes = await api.get(`/api/investment-requests/${reqId}/documents`, {
+        headers: { Authorization: `Bearer ${authToken}` }
+      });
+      const docs = Array.isArray(docsRes?.data?.documents) ? docsRes.data.documents : [];
+      const lower = (s) => String(s || '').toLowerCase();
+      const fa = docs.find(d => lower(d.doc_type) === 'final_agreement');
+      if (!fa) {
+        Alert.alert('No Final Agreement', 'The investor has not uploaded a final agreement yet.');
+        return;
+      }
+      const url = `${API_BASE}${fa.file_path}`;
+      require('react-native').Linking.openURL(url);
+    } catch (e) {
+      Alert.alert('Error', e?.response?.data?.error || 'Failed to open final agreement');
+    }
+  };
+
+  // Seller: create or open a funding request with this investor and navigate to detail
+  const openOrCreateFundingRequest = async (connection) => {
+    try {
+      if (String(connection.status) !== 'accepted') {
+        Alert.alert('Connection Pending', 'You can create a funding request after the investor accepts.');
+        return;
+      }
+      const investorId = connection.investor_id || connection.investorId;
+      if (!investorId) {
+        Alert.alert('Error', 'Missing investor_id for this connection.');
+        return;
+      }
+      // Ask entrepreneur for requested amount when creating first time
+      setAmountForInvestor({ investorId, value: '' });
+      setAmountModalOpen(true);
+    } catch (e) {
+      const msg = e?.response?.data?.error || e?.message || 'Failed to open funding request';
+      Alert.alert('Error', String(msg));
+    }
   };
 
   const sendConnectionMessage = async () => {
@@ -397,15 +461,15 @@ export default function InvestorConnection() {
                       {/* Request Button */}
                       <Pressable
                         onPress={() => requestConnection(investor)}
-                        disabled={requestingId === investor.id}
+                        disabled={requestingId === investor.id || requestedInvestorIds.has(investor.id)}
                         className={`rounded-lg py-3 items-center ${
-                          requestingId === investor.id ? 'bg-gray-400' : 'bg-orange-500'
+                          (requestingId === investor.id || requestedInvestorIds.has(investor.id)) ? 'bg-gray-400' : 'bg-blue-600'
                         }`}
                       >
                         {requestingId === investor.id ? (
                           <ActivityIndicator color="white" />
                         ) : (
-                          <Text className="font-bold text-white">Send Connection Request</Text>
+                          <Text className="font-bold text-white">{requestedInvestorIds.has(investor.id) ? 'Requested' : 'Send Connection Request'}</Text>
                         )}
                       </Pressable>
                     </View>
@@ -479,12 +543,17 @@ export default function InvestorConnection() {
                       </View>
 
                       {/* Connection Actions */}
-                      <View className="flex-row mt-3 space-x-2">
-                        <Pressable onPress={() => openConnectionChat(connection.id)} className="flex-1 items-center py-2 bg-gray-100 border border-gray-300 rounded-lg">
-                          <Text className="font-semibold text-gray-700">Chat</Text>
+                      <View className="flex-row mt-3">
+                        <Pressable onPress={() => openConnectionChat(connection.id)} className="flex-1 items-center py-3 mr-2 bg-gray-900 rounded-lg">
+                          <Text className="font-bold text-white">Chat</Text>
                         </Pressable>
-                        <Pressable onPress={() => openConnectionDocs(connection.id)} className="flex-1 items-center py-2 bg-gray-100 border border-gray-300 rounded-lg">
-                          <Text className="font-semibold text-gray-700">Documents</Text>
+                        <Pressable onPress={() => openConnectionDocs(connection.id)} className="flex-1 items-center py-3 bg-blue-600 rounded-lg">
+                          <Text className="font-bold text-white">Documents</Text>
+                        </Pressable>
+                      </View>
+                      <View className="mt-2">
+                        <Pressable onPress={() => viewFinalAgreement(connection)} className="items-center py-2 border border-gray-300 rounded-lg">
+                          <Text className="font-semibold text-gray-800">View Final Agreement</Text>
                         </Pressable>
                       </View>
 
@@ -538,6 +607,31 @@ export default function InvestorConnection() {
         </View>
       </Modal>
 
+      {/* Connection Request Amount Modal */}
+      <Modal visible={requestAmountModalOpen} transparent animationType="fade" onRequestClose={() => setRequestAmountModalOpen(false)}>
+        <View className="flex-1 justify-center items-center bg-black/40">
+          <View className="w-11/12 bg-white rounded-2xl p-4">
+            <Text className="text-lg font-bold text-gray-900">Send Connection Request</Text>
+            <Text className="text-gray-500 mt-1">Optionally include your requested amount for this investor.</Text>
+            <RNTextInput
+              value={requestAmountForInvestor.value}
+              onChangeText={(t) => setRequestAmountForInvestor(prev => ({ ...prev, value: t }))}
+              keyboardType="numeric"
+              placeholder="e.g. 100000"
+              className="mt-3 border border-gray-300 rounded-lg px-3 py-2"
+            />
+            <View className="flex-row justify-end mt-3 space-x-3">
+              <Pressable onPress={() => setRequestAmountModalOpen(false)} className="px-3 py-2">
+                <Text className="text-gray-500">Cancel</Text>
+              </Pressable>
+              <Pressable onPress={sendConnectionRequestWithAmount} className="px-4 py-2 bg-blue-600 rounded-lg">
+                <Text className="text-white font-bold">Send Request</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Documents Modal */}
       <Modal visible={docsOpen} transparent animationType="slide" onRequestClose={() => setDocsOpen(false)}>
         <View className="flex-1 justify-end bg-black/40">
@@ -570,6 +664,47 @@ export default function InvestorConnection() {
                 <Text className="text-center text-gray-500">No documents yet</Text>
               )}
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Requested Amount Modal */}
+      <Modal visible={amountModalOpen} transparent animationType="fade" onRequestClose={() => setAmountModalOpen(false)}>
+        <View className="flex-1 justify-center items-center bg-black/40">
+          <View className="w-11/12 bg-white rounded-2xl p-4">
+            <Text className="text-lg font-bold text-gray-900">Requested Amount</Text>
+            <Text className="text-gray-500 mt-1">Enter the amount you want to request from this investor. You can leave blank.</Text>
+            <RNTextInput
+              value={amountForInvestor.value}
+              onChangeText={(t) => setAmountForInvestor(prev => ({ ...prev, value: t }))}
+              keyboardType="numeric"
+              placeholder="e.g. 100000"
+              className="mt-3 border border-gray-300 rounded-lg px-3 py-2"
+            />
+            <View className="flex-row justify-end mt-3 space-x-3">
+              <Pressable onPress={() => setAmountModalOpen(false)} className="px-3 py-2">
+                <Text className="text-gray-500">Cancel</Text>
+              </Pressable>
+              <Pressable onPress={async () => {
+                try {
+                  const payload = { investor_id: amountForInvestor.investorId };
+                  const val = amountForInvestor.value && amountForInvestor.value.trim() !== '' ? Number(amountForInvestor.value) : undefined;
+                  if (val) payload.requested_amount = val;
+                  const res = await api.post('/api/investment-requests/create', payload);
+                  const reqId = res.data?.request_id;
+                  if (!reqId) {
+                    Alert.alert('Error', res.data?.error || 'Failed to open funding request');
+                    return;
+                  }
+                  setAmountModalOpen(false);
+                  router.push(`/seller/requests/${reqId}`);
+                } catch (err) {
+                  Alert.alert('Error', err?.response?.data?.error || err?.message || 'Failed to create');
+                }
+              }} className="px-4 py-2 bg-blue-600 rounded-lg">
+                <Text className="text-white font-bold">Continue</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       </Modal>

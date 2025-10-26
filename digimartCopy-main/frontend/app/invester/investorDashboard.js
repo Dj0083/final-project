@@ -12,30 +12,26 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import { investorAPI } from '../../api';
+import API, { investorAPI } from '../../api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const DashboardScreen = () => {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState({ totalInvested: 0, activeDeals: 0 });
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const loadStats = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const [approved, funded] = await Promise.all([
-        investorAPI.listRequests({ status: 'approved' }),
-        investorAPI.listRequests({ status: 'funded' }),
-      ]);
-      const listA = Array.isArray(approved) ? approved : [];
-      const listF = Array.isArray(funded) ? funded : [];
-      const normalized = [...listA.filter(r => (r.admin_approved || r.adminApproved)), ...listF];
-      const map = new Map();
-      normalized.forEach(r => map.set(String(r.id), r));
-      const list = Array.from(map.values());
-      let total = 0;
-      list.forEach(r => { total += parseFloat(r.funding_amount || r.amount || 0) || 0; });
-      setStats({ totalInvested: total, activeDeals: list.length });
+      const res = await API.get('/investment-requests/stats');
+      const data = res?.data || {};
+      if (String(data.role) === 'investor') {
+        const total = Number(data.total_invested || 0);
+        const active = Number(data.active_deals || 0);
+        setStats({ totalInvested: total, activeDeals: active });
+      }
     } catch (_) {
       // silent
     } finally {
@@ -43,8 +39,39 @@ const DashboardScreen = () => {
     }
   }, []);
 
-  useEffect(() => { loadStats(false); }, [loadStats]);
-  useFocusEffect(useCallback(() => { loadStats(true); }, [loadStats]));
+  const loadUnread = useCallback(async () => {
+    try {
+      // load last seen map (correct key)
+      let stored = {};
+      try {
+        const raw = await AsyncStorage.getItem('investor_msg_last_seen');
+        if (raw) stored = JSON.parse(raw);
+      } catch (_) {}
+
+      // fetch investor requests (all)
+      const res = await API.get('/investment-requests/investor/requests', { params: { status: 'all' } });
+      const reqs = Array.isArray(res?.data) ? res.data : (Array.isArray(res?.data?.requests) ? res.data.requests : []);
+      // limit to avoid excessive calls
+      const requests = reqs.slice(0, 25);
+
+      let count = 0;
+      for (const r of requests) {
+        try {
+          const m = await API.get(`/investment-requests/${r.id}/messages`, { params: { order: 'desc', limit: 1 } });
+          const msgs = Array.isArray(m?.data?.messages) ? m.data.messages : [];
+          const last = msgs.length > 0 ? msgs[0] : null;
+          const lastISO = last?.created_at || r.updated_at || r.created_at;
+          const lastTs = lastISO ? new Date(lastISO).getTime() : 0;
+          const seenTs = Number(stored[String(r.id)] || 0);
+          if (lastTs > seenTs) count += 1;
+        } catch (_) {}
+      }
+      setUnreadCount(count);
+    } catch (_) {}
+  }, []);
+
+  useEffect(() => { loadStats(false); loadUnread(); }, [loadStats, loadUnread]);
+  useFocusEffect(useCallback(() => { loadStats(true); loadUnread(); const t = setInterval(() => { loadUnread(); }, 15000); return () => clearInterval(t); }, [loadStats, loadUnread]));
   const onRefresh = useCallback(async () => { setRefreshing(true); await loadStats(true); setRefreshing(false); }, [loadStats]);
 
   // ✅ Clean navigation (no router.isReady)
@@ -131,7 +158,7 @@ const DashboardScreen = () => {
               >
                 <Ionicons name="notifications-outline" size={24} color="white" />
                 <View style={styles.notificationBadge}>
-                  <Text style={styles.notificationBadgeText}>2</Text>
+                  <Text style={styles.notificationBadgeText}>{unreadCount}</Text>
                 </View>
               </TouchableOpacity>
               <TouchableOpacity

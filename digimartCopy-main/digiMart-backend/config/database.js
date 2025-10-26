@@ -221,7 +221,7 @@ const initializeDatabase = async () => {
         id INT PRIMARY KEY AUTO_INCREMENT,
         request_id INT NOT NULL,
         user_id INT NOT NULL,
-        doc_type ENUM('slip','other') DEFAULT 'slip',
+        doc_type VARCHAR(50) NOT NULL DEFAULT 'other',
         file_path VARCHAR(255) NOT NULL,
         mime_type VARCHAR(100) NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -334,6 +334,15 @@ const initializeDatabase = async () => {
 
     try {
       await dbConnection.query(`ALTER TABLE affiliate_partner_messages ADD COLUMN sender_type ENUM('vendor','affiliate') DEFAULT 'vendor'`);
+    } catch (e) { /* ignore if exists */ }
+
+    // Allow flexible document types for investment request documents
+    try {
+      await dbConnection.query(`
+        ALTER TABLE investment_request_documents 
+        MODIFY COLUMN doc_type VARCHAR(50) NOT NULL DEFAULT 'other'
+      `);
+      console.log('Updated investment_request_documents.doc_type to VARCHAR(50)');
     } catch (e) { /* ignore if exists */ }
 
     // Add suspended flag on users to allow admin suspend/activate
