@@ -33,6 +33,20 @@ export default function ProductDetailSimple() {
   const [affiliateCode, setAffiliateCode] = useState('');
 
   useEffect(() => {
+    // Capture affiliate code and record click when accessed via ?aff=
+    const maybeTrackAffiliate = async () => {
+      try {
+        const aff = params?.aff;
+        const pid = params?.productId;
+        if (aff && pid) {
+          await AsyncStorage.setItem('affiliate_code', String(aff));
+          await api.get(`/api/track/click/${encodeURIComponent(pid)}`, { params: { ref: aff } });
+        }
+      } catch (e) {}
+    };
+    maybeTrackAffiliate();
+  }, [params?.aff, params?.productId]);
+  useEffect(() => {
     const fetchProduct = async () => {
       try {
         setLoading(true);

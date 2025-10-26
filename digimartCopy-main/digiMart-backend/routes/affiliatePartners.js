@@ -15,6 +15,8 @@ router.get('/seller/affiliate/requests/:id/agreement', auth, ctrl.getAgreement);
 
 // Affiliate: list incoming requests
 router.get('/affiliate/requests', auth, ctrl.listAffiliateRequests);
+// Affiliate: initiate a request to a seller
+router.post('/affiliate/requests', auth, ctrl.affiliateInitiateRequest);
 // Affiliate: accept/reject
 router.post('/affiliate/requests/:id/accept', auth, ctrl.acceptRequest);
 router.post('/affiliate/requests/:id/reject', auth, ctrl.rejectRequest);

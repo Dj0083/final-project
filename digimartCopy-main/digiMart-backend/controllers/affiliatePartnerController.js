@@ -20,6 +20,57 @@ const ensureParticipant = async (db, requestId, userId) => {
   return rows.length > 0;
 };
 
+// Affiliate initiates a request to a seller
+exports.affiliateInitiateRequest = async (req, res) => {
+  try {
+    const userId = req.user.userId; // affiliate user id
+    const role = (req.user.role || '').toLowerCase();
+    if (role !== 'affiliate') {
+      return res.status(403).json({ success: false, error: 'Only affiliates can initiate requests' });
+    }
+
+    const { seller_id, product_id, details, message } = req.body || {};
+    if (!seller_id) return res.status(400).json({ success: false, error: 'seller_id is required' });
+
+    const db = getDB();
+
+    // Ensure affiliate profile approved
+    const [[affRow]] = await db.execute('SELECT status FROM affiliates WHERE user_id = ?', [userId]);
+    if (!affRow) return res.status(400).json({ success: false, error: 'Affiliate profile not found' });
+    if (affRow.status !== 'approved') return res.status(403).json({ success: false, error: 'Affiliate not approved' });
+
+    // Prevent duplicate existing request
+    const [existing] = await db.execute(
+      `SELECT id, status FROM affiliate_partner_requests
+       WHERE seller_id = ? AND affiliate_user_id = ?`,
+      [seller_id, userId]
+    );
+    if (existing.length > 0) {
+      return res.json({ success: true, request: existing[0], message: 'Request already exists' });
+    }
+
+    const [result] = await db.execute(
+      `INSERT INTO affiliate_partner_requests (seller_id, affiliate_user_id, product_id, message, details)
+       VALUES (?, ?, ?, ?, ?)`,
+      [seller_id, userId, product_id || null, message || null, details || null]
+    );
+
+    const requestId = result.insertId;
+
+    if (message) {
+      await db.execute(
+        `INSERT INTO affiliate_partner_messages (request_id, sender_id, message, sender_type) VALUES (?, ?, ?, 'affiliate')`,
+        [requestId, userId, message]
+      );
+    }
+
+    res.status(201).json({ success: true, request: { id: requestId, status: 'pending' } });
+  } catch (error) {
+    console.error('affiliateInitiateRequest error:', error);
+    res.status(500).json({ success: false, error: 'Failed to create request' });
+  }
+};
+
 // Partner documents (flyers/agreements)
 exports.listPartnerDocuments = async (req, res) => {
   try {
@@ -323,18 +374,39 @@ try {
 
   // Fetch affiliate code for the affiliate user on this request
   const [[row]] = await db.execute(
-    `SELECT a.affiliate_code
+    `SELECT a.id as affiliate_id, a.affiliate_code
      FROM affiliate_partner_requests r
      JOIN affiliates a ON a.user_id = r.affiliate_user_id
      WHERE r.id = ?`,
     [id]
   );
-  const code = row?.affiliate_code;
+  let code = row?.affiliate_code;
+  const affiliateId = row?.affiliate_id;
+  if (!code && affiliateId) {
+    // Generate a unique code on-the-fly if missing
+    let tries = 0; let newCode;
+    while (tries++ < 10) {
+      const n = Math.floor(100 + Math.random() * 900);
+      newCode = `AFF${n}`;
+      const [dup] = await db.execute('SELECT id FROM affiliates WHERE affiliate_code = ?', [newCode]);
+      if (dup.length === 0) break;
+    }
+    if (!newCode) newCode = `AFF${Date.now().toString().slice(-3)}`;
+    await db.execute('UPDATE affiliates SET affiliate_code = ? WHERE id = ?', [newCode, affiliateId]);
+    code = newCode;
+  }
   if (!code) return res.status(404).json({ success: false, error: 'Affiliate code not found' });
 
-  const base = process.env.PUBLIC_APP_BASE || 'https://app.example.com';
-  const link = `${base}/product/${encodeURIComponent(product_id)}?aff=${encodeURIComponent(code)}`;
-  res.json({ success: true, link, affiliate_code: code });
+  const appBase = process.env.PUBLIC_APP_BASE || 'https://app.example.com';
+  const link = `${appBase}/customer/ProductDetail?productId=${encodeURIComponent(product_id)}&aff=${encodeURIComponent(code)}`;
+
+  // Also provide a short tracking link that records the click then redirects
+  const host = req.get('host');
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+  const backendBase = process.env.PUBLIC_BACKEND_BASE || `${protocol}://${host}`;
+  const short_link = `${backendBase}/p/${encodeURIComponent(product_id)}?aff=${encodeURIComponent(code)}`;
+
+  res.json({ success: true, link, short_link, affiliate_code: code });
 } catch (error) {
   console.error('getProductLink error:', error);
   res.status(500).json({ success: false, error: 'Failed to generate product link' });

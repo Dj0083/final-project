@@ -43,13 +43,36 @@ export default function ProductDetail() {
           return;
         }
 
+        // Build image URL robustly
+        const resolveImage = () => {
+          // Prefer explicit image_url if present
+          if (data.image_url) {
+            const u = String(data.image_url);
+            if (/^https?:\/\//i.test(u)) return u;
+            if (u.startsWith('/')) return `${API_BASE}${u}`;
+            return `${API_BASE}/${u}`;
+          }
+          // Handle images array: could be strings or objects with path/url
+          const imgs = data.images || [];
+          const first = Array.isArray(imgs) && imgs.length ? imgs[0] : null;
+          if (first) {
+            const candidate = typeof first === 'string' ? first : (first.url || first.path || first.file_path || '');
+            if (candidate) {
+              if (/^https?:\/\//i.test(candidate)) return candidate;
+              if (candidate.startsWith('/')) return `${API_BASE}${candidate}`;
+              return `${API_BASE}/${candidate}`;
+            }
+          }
+          return 'https://via.placeholder.com/300x300';
+        };
+
         setProduct({
           id: data.id,
           name: data.productName,
           price: Number(data.price),
           category: data.category,
           rating: data.average_rating || 0,
-          image: data.images && data.images.length > 0 ? `http://192.168.43.219:5000${data.images[0].path}` : 'https://via.placeholder.com/300x300',
+          image: resolveImage(),
           description: data.description,
           stock: Number(data.stockQty),
           sellerName: data.sellerName,
@@ -87,6 +110,23 @@ export default function ProductDetail() {
 
     fetchProduct();
   }, [params.productId]);
+
+  useEffect(() => {
+    // If opened with an affiliate link like ...?aff=AFF123, record click and remember code
+    const maybeTrackAffiliate = async () => {
+      try {
+        const aff = params?.aff;
+        const pid = params?.productId;
+        if (aff && pid) {
+          await AsyncStorage.setItem('affiliate_code', String(aff));
+          await api.get(`/api/track/click/${encodeURIComponent(pid)}`, { params: { ref: aff } });
+        }
+      } catch (e) {
+        // silent fail; UX unaffected
+      }
+    };
+    maybeTrackAffiliate();
+  }, [params?.aff, params?.productId]);
 
   useEffect(() => {
     const fetchAffiliateCode = async () => {

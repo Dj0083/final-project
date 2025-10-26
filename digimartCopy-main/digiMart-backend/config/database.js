@@ -351,6 +351,17 @@ const initializeDatabase = async () => {
       console.log('Added users.suspended column');
     } catch (e) { /* ignore if exists */ }
 
+    // Affiliate partner requests: add product_id and details
+    try {
+      await dbConnection.query(`ALTER TABLE affiliate_partner_requests ADD COLUMN product_id INT NULL AFTER affiliate_user_id`);
+    } catch (e) { /* ignore if exists */ }
+    try {
+      await dbConnection.query(`ALTER TABLE affiliate_partner_requests ADD COLUMN details TEXT NULL AFTER message`);
+    } catch (e) { /* ignore if exists */ }
+    try {
+      await dbConnection.query(`ALTER TABLE affiliate_partner_requests ADD CONSTRAINT fk_apr_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL`);
+    } catch (e) { /* ignore if exists */ }
+
     // User blacklist table to track suspensions
     await dbConnection.query(`
       CREATE TABLE IF NOT EXISTS user_blacklist (

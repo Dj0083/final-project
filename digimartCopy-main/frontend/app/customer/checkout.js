@@ -203,6 +203,23 @@ export default function Checkout() {
       const response = await API.post('/orders', orderData);
       console.log('Order response:', response.data);
 
+      // Record affiliate sales if an affiliate code is present
+      try {
+        const affiliateCode = await AsyncStorage.getItem('affiliate_code');
+        if (affiliateCode) {
+          const salesPayloads = orderItems.map(it => ({
+            product_id: it.productId,
+            affiliate_code: affiliateCode,
+            amount: Number((it.price * it.quantity) || 0)
+          }));
+          await Promise.all(
+            salesPayloads.map(p => API.post('/track/sale', p).catch(() => null))
+          );
+        }
+      } catch (e) {
+        // non-blocking
+      }
+
       // Clear cart after successful order
       await AsyncStorage.removeItem('cart');
       setCartItems([]);

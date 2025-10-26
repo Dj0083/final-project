@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { View, Text, ScrollView, Image, Pressable, TextInput, Alert, ActivityIndicator, RefreshControl } from "react-native";
+import { View, Text, ScrollView, Image, Pressable, TextInput, Alert, ActivityIndicator, RefreshControl, Modal, Share } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { ChevronLeft, Search, Users } from "lucide-react-native"; // ✅ icons
+import { ChevronLeft, Search, Users, MessageCircle, Send } from "lucide-react-native"; // ✅ icons
 import { api } from "../config/api";
 import { useFocusEffect } from "@react-navigation/native";
+import * as Clipboard from 'expo-clipboard';
 
 export default function AffiliateConnection() {
   const router = useRouter();
@@ -17,6 +18,24 @@ export default function AffiliateConnection() {
   const [pLoading, setPLoading] = useState(false);
   const [pError, setPError] = useState('');
   const [sellerReqs, setSellerReqs] = useState([]);
+  const [showRequestModal, setShowRequestModal] = useState(false);
+  const [requestTarget, setRequestTarget] = useState(null); // affiliate
+  const [sellerProducts, setSellerProducts] = useState([]);
+  const [reqLoadingProducts, setReqLoadingProducts] = useState(false);
+  const [reqProductId, setReqProductId] = useState(null);
+  const [reqDetails, setReqDetails] = useState('');
+  const [showLinkModal, setShowLinkModal] = useState(false);
+  const [linkRequestId, setLinkRequestId] = useState(null);
+  const [linkProductId, setLinkProductId] = useState(null);
+  const [linkLoadingProducts, setLinkLoadingProducts] = useState(false);
+
+  const normalizeUrl = (u) => {
+    if (!u) return null;
+    const s = String(u);
+    if (/^https?:\/\//i.test(s)) return s;
+    if (s.startsWith('/')) return `${api.defaults?.baseURL || ''}${s}`;
+    return `${api.defaults?.baseURL || ''}/${s}`;
+  };
 
   // Load approved affiliates from backend users endpoint
   useEffect(() => {
@@ -30,7 +49,7 @@ export default function AffiliateConnection() {
           id: u.id,
           name: u.full_name || u.name || 'Affiliate',
           role: u.affiliate_type || 'Affiliate',
-          img: u.business_image ? `${u.business_image}` : 'https://i.pravatar.cc/100',
+          img: u.business_image ? normalizeUrl(u.business_image) : null,
           requested: false,
           requestStatus: null,
           requestId: null,
@@ -118,15 +137,10 @@ export default function AffiliateConnection() {
 
   const openChatByRequestId = async (requestId, affiliateDisplay) => {
     try {
-      setChatAffiliate({ name: affiliateDisplay || 'Affiliate' });
-      setChatLoading(true);
-      setCurrentRequestId(requestId);
-      await fetchMessages(requestId);
-      setChatOpen(true);
+      if (!requestId) throw new Error('No request id');
+      router.push({ pathname: `/affiliate/chat/${requestId}`, params: { name: affiliateDisplay || '' } });
     } catch (e) {
       Alert.alert('Chat', 'Unable to open chat.');
-    } finally {
-      setChatLoading(false);
     }
   };
 
@@ -134,10 +148,82 @@ export default function AffiliateConnection() {
     try {
       const res = await api.get(`/api/seller/affiliate/requests/${requestId}/product-link`, { params: { product_id: productId || 'demo-1' } });
       const link = res.data?.link || '';
+      const shortLink = res.data?.short_link || '';
       if (!link) throw new Error('No link');
-      Alert.alert('Product Link', link);
+      const finalLink = shortLink || link;
+      await Clipboard.setStringAsync(finalLink);
+      try { await Share.share({ message: finalLink }); } catch {}
+      Alert.alert('Product Link', 'Link copied to clipboard. You can paste it to share with the affiliate.');
     } catch (e) {
       Alert.alert('Product Link', 'Failed to generate link');
+    }
+  };
+
+  const openLinkModal = async (requestId) => {
+    try {
+      setLinkRequestId(requestId);
+      setShowLinkModal(true);
+      setLinkLoadingProducts(true);
+      setLinkProductId(null);
+      if (sellerProducts.length === 0) {
+        const inv = await api.get('/api/products/inventory');
+        const data = inv.data || {};
+        let list = [];
+        if (Array.isArray(data)) list = data;
+        else if (Array.isArray(data.products)) list = data.products;
+        else list = [
+          ...(Array.isArray(data.Active) ? data.Active : []),
+          ...(Array.isArray(data['Out of Stock']) ? data['Out of Stock'] : []),
+          ...(Array.isArray(data.Violation) ? data.Violation : []),
+        ];
+        setSellerProducts(list);
+      }
+    } catch (e) {
+      Alert.alert('Generate Link', 'Failed to load your products');
+    } finally {
+      setLinkLoadingProducts(false);
+    }
+  };
+
+  const submitGenerateLink = async () => {
+    if (!linkRequestId || !linkProductId) {
+      Alert.alert('Generate Link', 'Please select a product');
+      return;
+    }
+    try {
+      const res = await api.get(`/api/seller/affiliate/requests/${linkRequestId}/product-link`, { params: { product_id: linkProductId } });
+      const link = res.data?.short_link || res.data?.link;
+      if (!link) throw new Error('No link');
+      setShowLinkModal(false);
+      setLinkRequestId(null);
+      setLinkProductId(null);
+      await Clipboard.setStringAsync(link);
+      try { await Share.share({ message: link }); } catch {}
+      Alert.alert('Product Link', 'Link copied to clipboard and ready to share.');
+    } catch (e) {
+      Alert.alert('Generate Link', 'Failed to generate link');
+    }
+  };
+
+  const submitGenerateLinkAndSend = async () => {
+    if (!linkRequestId || !linkProductId) {
+      Alert.alert('Generate Link', 'Please select a product');
+      return;
+    }
+    try {
+      const res = await api.get(`/api/seller/affiliate/requests/${linkRequestId}/product-link`, { params: { product_id: linkProductId } });
+      const link = res.data?.short_link || res.data?.link;
+      if (!link) throw new Error('No link');
+      // Send into chat
+      await api.post(`/api/affiliate/requests/${linkRequestId}/messages`, { message: link });
+      setShowLinkModal(false);
+      setLinkRequestId(null);
+      setLinkProductId(null);
+      Alert.alert('Sent', 'Link posted in chat.');
+      // Navigate to chat thread
+      router.push({ pathname: `/affiliate/chat/${linkRequestId}` });
+    } catch (e) {
+      Alert.alert('Generate Link', 'Failed to send link in chat');
     }
   };
 
@@ -206,6 +292,56 @@ export default function AffiliateConnection() {
     openChatForAffiliate(affiliate);
   };
 
+  const openRequestModal = async (affiliate) => {
+    try {
+      setRequestTarget(affiliate);
+      setShowRequestModal(true);
+      setReqLoadingProducts(true);
+      setReqProductId(null);
+      setReqDetails('');
+      const inv = await api.get('/api/products/inventory');
+      const data = inv.data || {};
+      let list = [];
+      if (Array.isArray(data)) list = data;
+      else if (Array.isArray(data.products)) list = data.products;
+      else list = [
+        ...(Array.isArray(data.Active) ? data.Active : []),
+        ...(Array.isArray(data['Out of Stock']) ? data['Out of Stock'] : []),
+        ...(Array.isArray(data.Violation) ? data.Violation : []),
+      ];
+      setSellerProducts(list);
+    } catch (e) {
+      Alert.alert('Request', 'Failed to load your products');
+    } finally {
+      setReqLoadingProducts(false);
+    }
+  };
+
+  const submitAffiliateRequest = async () => {
+    if (!requestTarget) return;
+    try {
+      const sel = sellerProducts.find(p => String(p.id) === String(reqProductId));
+      const productLine = sel ? `Product: ${sel.product_name || sel.productName || sel.name} (ID: ${sel.id})\n` : '';
+      const message = `${productLine}${reqDetails || ''}`.trim();
+      await api.post('/api/seller/affiliate/requests', { affiliate_user_id: requestTarget.id, message, product_id: reqProductId });
+      // Refresh seller requests and reflect status
+      const reqRes = await api.get('/api/seller/affiliate/requests');
+      const reqs = Array.isArray(reqRes.data?.requests) ? reqRes.data.requests : [];
+      setSellerReqs(reqs);
+      setAffiliates(prev => prev.map(a => {
+        if (a.id !== requestTarget.id) return a;
+        const r = reqs.find(x => x.affiliate_user_id === a.id);
+        if (!r) return a;
+        return { ...a, requested: true, requestStatus: r.status, requestId: r.id };
+      }));
+      setShowRequestModal(false);
+      setRequestTarget(null);
+      Alert.alert('Request', 'Request sent');
+    } catch (e) {
+      Alert.alert('Request', 'Failed to send request');
+    }
+  };
+
   // Chat modal state
   const [chatOpen, setChatOpen] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
@@ -217,8 +353,6 @@ export default function AffiliateConnection() {
 
   const openChatForAffiliate = async (affiliate) => {
     try {
-      setChatAffiliate(affiliate);
-      setChatLoading(true);
       // Refresh seller requests to find existing request
       let requestId = affiliate.requestId;
       if (!requestId) {
@@ -235,14 +369,9 @@ export default function AffiliateConnection() {
         requestId = sendRes.data?.request?.id || sendRes.data?.requestId || sendRes.data?.id;
       }
       if (!requestId) throw new Error('No request id');
-      setCurrentRequestId(requestId);
-      const msgRes = await api.get(`/api/affiliate/requests/${requestId}/messages`);
-      setChatMessages(Array.isArray(msgRes.data?.messages) ? msgRes.data.messages : []);
-      setChatOpen(true);
+      router.push({ pathname: `/affiliate/chat/${requestId}`, params: { name: affiliate.name || '' } });
     } catch (e) {
       Alert.alert('Chat', 'Unable to open chat. Please try again.');
-    } finally {
-      setChatLoading(false);
     }
   };
 
@@ -366,10 +495,12 @@ export default function AffiliateConnection() {
                 key={affiliate.id}
                 className="flex-row items-center p-3 mb-3 bg-white rounded-lg shadow"
               >
-                <Image
-                  source={{ uri: affiliate.img }}
-                  className="w-12 h-12 mr-3 rounded-full"
-                />
+                {!!affiliate.img && (
+                  <Image
+                    source={{ uri: affiliate.img }}
+                    className="w-12 h-12 mr-3 rounded-full"
+                  />
+                )}
                 <View className="flex-1">
                   <Text className="font-semibold">{affiliate.name}</Text>
                   <Text className="text-gray-500">{affiliate.role}</Text>
@@ -380,30 +511,15 @@ export default function AffiliateConnection() {
                 <View className="flex-row items-center">
                   <Pressable
                     onPress={() => onChat(affiliate)}
-                    className="px-3 py-1 mr-2 bg-yellow-400 rounded-lg"
+                    className="flex-row items-center px-3 py-2 mr-2 bg-yellow-400 rounded-xl"
                   >
-                    <Text className="font-semibold">Chat</Text>
+                    <MessageCircle size={16} color="#1f2937" />
+                    <Text className="ml-1 font-semibold">Chat</Text>
                   </Pressable>
                   <Pressable
-                    onPress={async () => {
-                      try {
-                        await api.post('/api/seller/affiliate/requests', { affiliate_user_id: affiliate.id, message: 'Hi, let\'s collaborate!' });
-                        // Refresh seller requests and reflect status
-                        const reqRes = await api.get('/api/seller/affiliate/requests');
-                        const reqs = Array.isArray(reqRes.data?.requests) ? reqRes.data.requests : [];
-                        setSellerReqs(reqs);
-                        setAffiliates(prev => prev.map(a => {
-                          if (a.id !== affiliate.id) return a;
-                          const r = reqs.find(x => x.affiliate_user_id === a.id);
-                          if (!r) return a;
-                          return { ...a, requested: true, requestStatus: r.status, requestId: r.id };
-                        }));
-                        Alert.alert('Request', 'Request sent');
-                      } catch (e) {
-                        Alert.alert('Request', 'Failed to send request');
-                      }
-                    }}
-                    className={`px-3 py-1 rounded-lg ${
+                    disabled={affiliate.requested && affiliate.requestStatus !== 'rejected'}
+                    onPress={() => openRequestModal(affiliate)}
+                    className={`px-3 py-2 rounded-xl ${
                       affiliate.requestStatus === 'accepted' ? "bg-green-500" : (affiliate.requested ? "bg-blue-300" : "bg-blue-500")
                     }`}
                   >
@@ -439,34 +555,17 @@ export default function AffiliateConnection() {
             {partnered.map((p) => (
               <View key={p.request_id} className="p-4 mb-3 bg-white shadow rounded-xl">
                 <View className="flex-row items-center mb-3">
-                  <Image
-                    source={{ uri: 'https://i.pravatar.cc/100' }}
-                    className="w-12 h-12 mr-3 rounded-full"
-                  />
                   <View>
                     <Text className="font-semibold">{p.name || 'Affiliate'}</Text>
                     <Text className="text-gray-500">{p.email}</Text>
                   </View>
                 </View>
 
-                <Pressable onPress={() => openChatByRequestId(p.request_id, p.name)} className="w-20 px-3 py-1 mb-3 bg-yellow-400 rounded-lg">
-                  <Text className="font-semibold text-center">Chat</Text>
+                <Pressable onPress={() => openChatByRequestId(p.request_id, p.name)} className="self-start flex-row items-center px-3 py-2 bg-yellow-400 rounded-xl">
+                  <MessageCircle size={16} color="#1f2937" />
+                  <Text className="ml-1 font-semibold text-center">Chat</Text>
                 </Pressable>
-
-                <Text className="text-sm text-gray-500">Actions</Text>
-                <View className="flex-row mt-2">
-                  <Pressable onPress={() => generateLink(p.request_id)} className="px-3 py-2 mr-2 bg-orange-400 rounded-lg">
-                    <Text className="text-white">Generate Link</Text>
-                  </Pressable>
-                  <Pressable onPress={() => viewAgreement(p.request_id)} className="px-3 py-2 bg-green-500 rounded-lg">
-                    <Text className="text-white">View Agreement</Text>
-                  </Pressable>
-                </View>
-                <View className="flex-row mt-2">
-                  <Pressable onPress={() => uploadFlyer(p.request_id)} className="px-3 py-2 mr-2 bg-purple-600 rounded-lg">
-                    <Text className="text-white">Upload Flyer</Text>
-                  </Pressable>
-                </View>
+                {/* Actions removed: generate link, view agreement, upload flyer handled in chat */}
               </View>
             ))}
           </>
@@ -518,13 +617,102 @@ export default function AffiliateConnection() {
                 placeholder="Type a message"
                 className="flex-1 border border-gray-300 rounded px-3 py-2 mr-2"
               />
-              <Pressable onPress={sendChatMessage} className="px-3 py-2 bg-orange-400 rounded">
-                <Text className="text-white font-semibold">Send</Text>
+              <Pressable onPress={sendChatMessage} className="flex-row items-center px-3 py-2 bg-orange-400 rounded">
+                <Send size={16} color="#fff" />
+                <Text className="ml-1 text-white font-semibold">Send</Text>
               </Pressable>
             </View>
           </View>
         </View>
       )}
+
+      {/* Request Modal */}
+      <Modal visible={showRequestModal} transparent animationType="slide" onRequestClose={() => setShowRequestModal(false)}>
+        <View className="flex-1 justify-end bg-black/50">
+          <View className="bg-white rounded-t-2xl p-4 max-h-[80%]">
+            <View className="flex-row items-center justify-between mb-2">
+              <Text className="text-lg font-semibold">Send Request {requestTarget ? `to ${requestTarget.name}` : ''}</Text>
+              <Pressable onPress={() => setShowRequestModal(false)} className="px-3 py-1 bg-gray-200 rounded">
+                <Text>Close</Text>
+              </Pressable>
+            </View>
+            {reqLoadingProducts ? (
+              <View className="py-10 items-center"><ActivityIndicator size="large" color="#fb923c" /></View>
+            ) : (
+              <ScrollView className="max-h-[70%]">
+                <Text className="mb-1 text-sm text-gray-600">Select Product</Text>
+                <View className="border border-gray-300 rounded-lg">
+                  {sellerProducts.map((p) => (
+                    <Pressable key={p.id} onPress={() => setReqProductId(p.id)} className={`px-3 py-2 ${String(reqProductId) === String(p.id) ? 'bg-orange-50' : 'bg-white'}`}>
+                      <Text className="font-medium text-gray-800">{p.product_name || p.productName || p.name}</Text>
+                      <Text className="text-xs text-gray-500">ID: {p.id}</Text>
+                    </Pressable>
+                  ))}
+                  {sellerProducts.length === 0 && (
+                    <View className="px-3 py-3"><Text className="text-gray-500">No products found</Text></View>
+                  )}
+                </View>
+                <Text className="mt-3 mb-1 text-sm text-gray-600">Details</Text>
+                <TextInput
+                  value={reqDetails}
+                  onChangeText={setReqDetails}
+                  placeholder="Tell the affiliate about the product, target audience, timeline, etc."
+                  className="border border-gray-300 rounded-lg px-3 py-2"
+                  multiline
+                  numberOfLines={4}
+                  textAlignVertical="top"
+                />
+              </ScrollView>
+            )}
+            <View className="flex-row justify-end mt-3">
+              <Pressable disabled={!requestTarget} onPress={submitAffiliateRequest} className="flex-row items-center px-4 py-2 bg-blue-600 rounded-xl">
+                <Send size={16} color="#fff" />
+                <Text className="ml-1 text-white font-semibold">Send Request</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Generate Link Modal */}
+      <Modal visible={showLinkModal} transparent animationType="slide" onRequestClose={() => setShowLinkModal(false)}>
+        <View className="flex-1 justify-end bg-black/50">
+          <View className="bg-white rounded-t-2xl p-4 max-h-[70%]">
+            <View className="flex-row items-center justify-between mb-2">
+              <Text className="text-lg font-semibold">Generate Product Link</Text>
+              <Pressable onPress={() => setShowLinkModal(false)} className="px-3 py-1 bg-gray-200 rounded">
+                <Text>Close</Text>
+              </Pressable>
+            </View>
+            {linkLoadingProducts ? (
+              <View className="py-10 items-center"><ActivityIndicator size="large" color="#fb923c" /></View>
+            ) : (
+              <ScrollView>
+                <Text className="mb-1 text-sm text-gray-600">Select Product</Text>
+                <View className="border border-gray-300 rounded-lg">
+                  {sellerProducts.map((p) => (
+                    <Pressable key={p.id} onPress={() => setLinkProductId(p.id)} className={`px-3 py-2 ${String(linkProductId) === String(p.id) ? 'bg-orange-50' : 'bg-white'}`}>
+                      <Text className="font-medium text-gray-800">{p.product_name || p.productName || p.name}</Text>
+                      <Text className="text-xs text-gray-500">ID: {p.id}</Text>
+                    </Pressable>
+                  ))}
+                  {sellerProducts.length === 0 && (
+                    <View className="px-3 py-3"><Text className="text-gray-500">No products found</Text></View>
+                  )}
+                </View>
+              </ScrollView>
+            )}
+            <View className="flex-row justify-end mt-3">
+              <Pressable onPress={submitGenerateLink} className="px-4 py-2 mr-2 bg-orange-500 rounded-xl">
+                <Text className="text-white font-semibold">Generate</Text>
+              </Pressable>
+              <Pressable onPress={submitGenerateLinkAndSend} className="px-4 py-2 bg-green-600 rounded-xl">
+                <Text className="text-white font-semibold">Generate & Send in Chat</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

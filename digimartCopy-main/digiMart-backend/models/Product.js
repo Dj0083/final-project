@@ -23,7 +23,7 @@ class Product {
         COUNT(pr.id) as review_count
       FROM products p 
       LEFT JOIN users u ON p.seller_id = u.id 
-      LEFT JOIN product_reviews pr ON p.id = pr.product_id
+      LEFT JOIN reviews pr ON p.id = pr.product_id
       WHERE p.status = 'active'
       GROUP BY p.id
       ORDER BY p.created_at DESC
@@ -54,7 +54,7 @@ class Product {
         COUNT(pr.id) as review_count
       FROM products p 
       LEFT JOIN users u ON p.seller_id = u.id 
-      LEFT JOIN product_reviews pr ON p.id = pr.product_id
+      LEFT JOIN reviews pr ON p.id = pr.product_id
       WHERE p.id = ?
       GROUP BY p.id
     `, [productId]);

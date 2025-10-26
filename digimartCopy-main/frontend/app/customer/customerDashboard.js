@@ -10,6 +10,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import API from "../../api";
+import { API_BASE } from "../../config/api";
 import { useAuth } from "../../context/AuthContext";
 // eslint-disable-next-line no-unused-vars
 const { width, height } = Dimensions.get('window');
@@ -316,6 +317,42 @@ export default function Marketplace() {
 
 
 
+  const resolveImageUrl = (item) => {
+    // Prefer item.imageUrl
+    const prefer = item.imageUrl || item.image_url;
+    const toAbs = (u) => {
+      if (!u) return null;
+      const s = String(u);
+      if (/^https?:\/\//i.test(s)) {
+        try {
+          const absBase = API_BASE.replace(/\/$/, '');
+          const baseUrl = new URL(absBase);
+          const orig = new URL(s);
+          // Rewrite to API_BASE origin, keep path and search
+          return `${baseUrl.origin}${orig.pathname}${orig.search}`;
+        } catch {
+          return s;
+        }
+      }
+      if (s.startsWith('/')) return `${API_BASE}${s}`;
+      return `${API_BASE}/${s}`;
+    };
+    if (prefer) {
+      const abs = toAbs(prefer);
+      if (abs) return abs;
+    }
+    // Fallback to images array
+    let imgs = item.images;
+    try { if (typeof imgs === 'string') imgs = JSON.parse(imgs); } catch {}
+    if (Array.isArray(imgs) && imgs.length > 0) {
+      const first = imgs[0];
+      const candidate = typeof first === 'string' ? first : (first.url || first.path || first.file_path || '');
+      const abs = toAbs(candidate);
+      if (abs) return abs;
+    }
+    return 'https://via.placeholder.com/300x300?text=No+Image';
+  };
+
   // Product Card
   const renderProductItem = (item) => (
     <TouchableOpacity 
@@ -327,57 +364,14 @@ export default function Marketplace() {
       })}
     >
       <View className="relative">
-        <Image 
-          source={{ 
-            uri: (() => {
-              console.log(`🖼️ Processing image for ${item.productName}:`);
-              console.log(`   imageUrl: ${item.imageUrl}`);
-              console.log(`   images: ${item.images}`);
-              
-              // Try imageUrl first
-              if (item.imageUrl) {
-                if (typeof item.imageUrl === 'string' && item.imageUrl.startsWith('http')) {
-                  console.log(`   ✅ Using imageUrl: ${item.imageUrl}`);
-                  return item.imageUrl;
-                } else if (typeof item.imageUrl === 'string') {
-                  const fullUrl = `http://192.168.43.219:5000${item.imageUrl.startsWith('/') ? item.imageUrl : '/' + item.imageUrl}`;
-                  console.log(`   ✅ Constructed URL from imageUrl: ${fullUrl}`);
-                  return fullUrl;
-                }
-              }
-              
-              // Try images field if imageUrl doesn't work
-              if (item.images) {
-                let imgs = item.images;
-                if (typeof imgs === 'string') {
-                  try {
-                    imgs = JSON.parse(imgs);
-                  } catch (err) {
-                    console.log(`   ❌ Failed to parse images JSON: ${err.message}`);
-                    return 'https://via.placeholder.com/150?text=No+Image';
-                  }
-                }
-                if (Array.isArray(imgs) && imgs.length > 0) {
-                  const firstImage = imgs[0];
-                  if (firstImage && firstImage.path) {
-                    const fullUrl = `http://192.168.43.219:5000${firstImage.path}`;
-                    console.log(`   ✅ Using images array: ${fullUrl}`);
-                    return fullUrl;
-                  }
-                }
-              }
-              
-              console.log(`   ❌ No valid image found, using test image`);
-              // Use a test image that definitely works to verify Image component is functioning
-              return 'https://picsum.photos/150/150?random=' + item.id;
-            })()
-          }} 
+        <Image
+          source={{ uri: resolveImageUrl(item) }} 
           className="w-full h-32 rounded-t-2xl" 
           defaultSource={{ uri: 'https://via.placeholder.com/150' }}
           resizeMode="cover"
           onError={(e) => {
             console.log('❌ Image load FAILED for product:', item.productName);
-            console.log('   Attempted URL:', item.imageUrl);
+            console.log('   Attempted URL:', resolveImageUrl(item));
             console.log('   Error details:', e.nativeEvent);
           }}
           onLoad={() => {
