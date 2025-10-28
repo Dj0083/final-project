@@ -135,16 +135,12 @@ export default function SellerFundingRequestDetail() {
   return (
     <View style={{ flex: 1, backgroundColor: '#f8fafc' }}>
       {/* Header */}
-      <View style={{ paddingHorizontal: 12, paddingTop: 12, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', justifyContent: 'space-between' }}>
+      <View style={{ paddingHorizontal: 12, paddingTop: 12, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', justifyContent: 'flex-start' }}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <TouchableOpacity onPress={() => router.back()} style={{ padding: 8, marginRight: 6 }}>
             <Ionicons name="arrow-back" size={22} color="#111827" />
           </TouchableOpacity>
-          <Text style={{ fontSize: 18, fontWeight: '700', color: '#111827' }}>Funding Request #{request.id}</Text>
         </View>
-        <TouchableOpacity onPress={onViewFinalAgreement} style={{ paddingVertical: 6, paddingHorizontal: 10, backgroundColor: '#3b82f6', borderRadius: 8 }}>
-          <Text style={{ color: 'white', fontWeight: '700' }}>View Final Agreement</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Status banner */}
@@ -166,11 +162,11 @@ export default function SellerFundingRequestDetail() {
       <View style={{ backgroundColor: 'white', padding: 12, borderRadius: 12, marginHorizontal: 12, marginBottom: 12 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Ionicons name="document-attach-outline" size={18} color="#111827" />
+            <Ionicons name="document-attach-outline" size={18} color="#fb923c" />
             <Text style={{ marginLeft: 6, fontWeight: '700', color: '#111827' }}>Documents</Text>
           </View>
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <TouchableOpacity onPress={onUpload} disabled={uploading} style={{ backgroundColor: '#111827', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8 }}>
+            <TouchableOpacity onPress={onUpload} disabled={uploading} style={{ backgroundColor: '#fb923c', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8 }}>
               <Text style={{ color: 'white', fontWeight: '600' }}>{uploading ? 'Uploading…' : 'Upload Document'}</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={onViewFinalAgreement} disabled={viewing} style={{ backgroundColor: '#3b82f6', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8 }}>
@@ -201,7 +197,7 @@ export default function SellerFundingRequestDetail() {
       {/* Chat */}
       <View style={{ flex: 1, backgroundColor: 'white', padding: 12, borderRadius: 12, marginHorizontal: 12, marginBottom: 12 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-          <Ionicons name="chatbubble-ellipses-outline" size={18} color="#111827" />
+          <Ionicons name="chatbubble-ellipses-outline" size={18} color="#fb923c" />
           <Text style={{ marginLeft: 6, fontWeight: '700', color: '#111827' }}>Messages</Text>
         </View>
         <FlatList
@@ -224,17 +220,6 @@ export default function SellerFundingRequestDetail() {
             </View>
           )}
         />
-        <View style={{ flexDirection: 'row', marginTop: 8 }}>
-          <TextInput
-            value={message}
-            onChangeText={setMessage}
-            placeholder="Write a message"
-            style={{ flex: 1, backgroundColor: '#f3f4f6', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 }}
-          />
-          <TouchableOpacity onPress={onSend} disabled={sending} style={{ marginLeft: 8, backgroundColor: '#111827', borderRadius: 8, paddingHorizontal: 16, justifyContent: 'center' }}>
-            <Text style={{ color: 'white', fontWeight: '700' }}>{sending ? '...' : 'Send'}</Text>
-          </TouchableOpacity>
-        </View>
       </View>
     </View>
   );

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { api } from '../../config/api';
@@ -17,34 +18,55 @@ export default function AdminDashboard() {
     totalProducts: 0,
     pendingAgreements: 0
   });
+  const [userDist, setUserDist] = useState({ customers: 0, sellers: 0, investors: 0, affiliates: 0 });
 
   useEffect(() => {
-    fetchDashboardStats();
-    fetchPendingAgreements();
+    (async () => {
+      try {
+        const cached = await AsyncStorage.getItem('admin_stats');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && typeof parsed === 'object') {
+            setStats(prev => ({ ...prev, ...parsed }));
+            setLoading(false);
+          }
+        }
+      } catch { }
+      fetchDashboardStats();
+      fetchPendingAgreements();
+      fetchUserDistribution();
+    })();
+  }, []);
+
+  useEffect(() => {
+    let t = setInterval(() => {
+      fetchDashboardStats();
+      fetchPendingAgreements();
+      fetchUserDistribution();
+    }, 10000);
+    return () => {
+      if (t) clearInterval(t);
+    };
   }, []);
 
   const fetchDashboardStats = async () => {
     try {
       setLoading(true);
-      // Replace with your actual API call
-      // const response = await axios.get('http://192.168.56.83:5000/api/admin/stats');
-      // setStats(response.data);
-      
-      // Simulated data for now
-      setTimeout(() => {
-        setStats({
-          totalUsers: 5432,
-          activeUsers: 3765,
-          pendingApprovals: 24,
-          totalRevenue: 284750,
-          todayOrders: 47,
-          totalProducts: 892
-        });
-        setLoading(false);
-        setRefreshing(false);
-      }, 1000);
+      const res = await api.get('/api/admin/stats');
+      const data = res.data || {};
+      const next = {
+        totalUsers: Number(data.totalUsers ?? data.total_users ?? 0),
+        activeUsers: Number(data.activeUsers ?? data.active_users ?? 0),
+        pendingApprovals: Number(data.pendingApprovals ?? data.pending_approvals ?? 0),
+        totalRevenue: Number(data.totalRevenue ?? data.total_revenue ?? 0),
+        todayOrders: Number(data.todayOrders ?? data.today_orders ?? 0),
+        totalProducts: Number(data.totalProducts ?? data.total_products ?? 0),
+      };
+      setStats(prev => ({ ...prev, ...next }));
+      try { await AsyncStorage.setItem('admin_stats', JSON.stringify({ ...stats, ...next })); } catch { }
     } catch (error) {
       console.error('Error fetching stats:', error);
+    } finally {
       setLoading(false);
       setRefreshing(false);
     }
@@ -55,14 +77,37 @@ export default function AdminDashboard() {
       const res = await api.get('/api/investment-requests/pending-agreements/list');
       const count = Array.isArray(res.data?.requests) ? res.data.requests.length : 0;
       setStats(prev => ({ ...prev, pendingAgreements: count }));
+      try { await AsyncStorage.setItem('admin_stats', JSON.stringify({ ...stats, pendingAgreements: count })); } catch { }
     } catch (e) {
       // leave count as-is on error
     }
   };
 
+  const fetchUserDistribution = async () => {
+    try {
+      const roles = [
+        { key: 'customers', role: 'customer' },
+        { key: 'sellers', role: 'seller' },
+        { key: 'investors', role: 'investor' },
+        { key: 'affiliates', role: 'affiliate' },
+      ];
+      const results = await Promise.all(
+        roles.map(r => api.get('/api/users/all', { params: { role: r.role } }).catch(() => ({ data: { users: [] } })))
+      );
+      const next = { ...userDist };
+      results.forEach((res, idx) => {
+        const arr = Array.isArray(res.data?.users) ? res.data.users : [];
+        next[roles[idx].key] = arr.length;
+      });
+      setUserDist(next);
+    } catch { }
+  };
+
   const onRefresh = () => {
     setRefreshing(true);
     fetchDashboardStats();
+    fetchPendingAgreements();
+    fetchUserDistribution();
   };
 
   if (loading && !refreshing) {
@@ -94,7 +139,7 @@ export default function AdminDashboard() {
           <Text className="mb-4 text-lg font-bold text-gray-900">Quick Actions</Text>
           <View className="flex-row flex-wrap justify-between">
             <TouchableOpacity
-              onPress={() => {/* Stay on current page */}}
+              onPress={() => {/* Stay on current page */ }}
               className="items-center p-4 mb-3 bg-white shadow-sm rounded-2xl"
               style={{ width: '48%' }}
             >
@@ -159,36 +204,16 @@ export default function AdminDashboard() {
           </View>
         </View>
 
-        {/* Statistics Cards */}
+        {/* Platform Statistics */}
         <View className="px-5 pb-6">
           <Text className="mb-4 text-lg font-bold text-gray-900">Platform Statistics</Text>
-          
-          {/* Revenue Card - Prominent Display */}
-          <View className="p-6 mb-4 bg-orange-500 shadow-lg rounded-2xl">
-            <View className="flex-row items-center justify-between">
-              <View className="flex-1">
-                <Text className="mb-2 text-sm font-medium text-orange-100">Total Revenue</Text>
-                <Text className="text-4xl font-bold text-white">
-                  Rs. {stats.totalRevenue.toLocaleString()}
-                </Text>
-                <Text className="mt-2 text-xs text-orange-100">All-time earnings</Text>
-              </View>
-              <View className="items-center justify-center w-16 h-16 rounded-full bg-white/20">
-                <Ionicons name="cash" size={36} color="white" />
-              </View>
-            </View>
-          </View>
-
-          {/* User Statistics */}
           <View className="flex-row justify-between mb-4">
             <View className="p-5 bg-white shadow-sm rounded-xl" style={{ width: '48%' }}>
               <View className="items-center justify-center mb-3 bg-blue-100 rounded-full w-11 h-11">
                 <Ionicons name="people" size={26} color="#3B82F6" />
               </View>
               <Text className="mb-1 text-sm font-medium text-gray-600">Total Users</Text>
-              <Text className="text-3xl font-bold text-gray-900">
-                {stats.totalUsers.toLocaleString()}
-              </Text>
+              <Text className="text-3xl font-bold text-gray-900">{stats.totalUsers.toLocaleString()}</Text>
             </View>
 
             <View className="p-5 bg-white shadow-sm rounded-xl" style={{ width: '48%' }}>
@@ -196,9 +221,7 @@ export default function AdminDashboard() {
                 <Ionicons name="checkmark-circle" size={26} color="#10B981" />
               </View>
               <Text className="mb-1 text-sm font-medium text-gray-600">Active Users</Text>
-              <Text className="text-3xl font-bold text-gray-900">
-                {stats.activeUsers.toLocaleString()}
-              </Text>
+              <Text className="text-3xl font-bold text-gray-900">{stats.activeUsers.toLocaleString()}</Text>
             </View>
           </View>
 
@@ -230,27 +253,20 @@ export default function AdminDashboard() {
         <View className="px-5 pb-6">
           <View className="p-5 bg-white shadow-sm rounded-2xl">
             <Text className="mb-4 text-lg font-bold text-gray-900">User Distribution</Text>
-
             {[
-              { label: 'Customers', value: '3,140', color: '#3B82F6', icon: 'cart' },
-              { label: 'Sellers', value: '2,185', color: '#10B981', icon: 'storefront' },
-              { label: 'Investors', value: '75', color: '#8B5CF6', icon: 'cash' },
-              { label: 'Affiliates', value: '1,543', color: '#F59E0B', icon: 'link' },
+              { label: 'Customers', value: userDist.customers, color: '#3B82F6', icon: 'cart' },
+              { label: 'Sellers', value: userDist.sellers, color: '#10B981', icon: 'storefront' },
+              { label: 'Investors', value: userDist.investors, color: '#8B5CF6', icon: 'cash' },
+              { label: 'Affiliates', value: userDist.affiliates, color: '#F59E0B', icon: 'link' },
             ].map((item, index) => (
-              <View
-                key={index}
-                className="flex-row items-center justify-between py-3 border-b border-gray-100 last:border-b-0"
-              >
+              <View key={index} className="flex-row items-center justify-between py-3 border-b border-gray-100 last:border-b-0">
                 <View className="flex-row items-center">
-                  <View
-                    style={{ backgroundColor: item.color + '20' }}
-                    className="items-center justify-center w-10 h-10 mr-3 rounded-full"
-                  >
+                  <View style={{ backgroundColor: item.color + '20' }} className="items-center justify-center w-10 h-10 mr-3 rounded-full">
                     <Ionicons name={item.icon} size={20} color={item.color} />
                   </View>
                   <Text className="text-base font-medium text-gray-700">{item.label}</Text>
                 </View>
-                <Text className="text-lg font-bold text-gray-900">{item.value}</Text>
+                <Text className="text-lg font-bold text-gray-900">{Number(item.value || 0).toLocaleString()}</Text>
               </View>
             ))}
           </View>

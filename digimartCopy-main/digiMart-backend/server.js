@@ -15,6 +15,7 @@ const investmentRequestRoutes = require('./routes/investmentRequests');
 const affiliatePartnerRoutes = require('./routes/affiliatePartners');
 const affiliatesRoutes = require('./routes/affiliates');
 const vendorsRoutes = require('./routes/vendors');
+const adminRoutes = require('./routes/admin');
 const connectionsRoutes = require('./routes/connections');
 const productsV2Routes = require('./routes/productsV2');
 const trackingController = require('./controllers/trackingController');
@@ -59,6 +60,7 @@ app.use('/api', affiliatesRoutes);
 app.use('/api', vendorsRoutes);
 app.use('/api', connectionsRoutes);
 app.use('/api', productsV2Routes);
+app.use('/api/admin', adminRoutes);
 
 // Tracking endpoints
 app.get('/api/track/click/:productId', trackingController.trackClick);

@@ -166,7 +166,7 @@ export default function InvestorFundingRequestDetail() {
   if (loading) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc' }}>
-        <ActivityIndicator size="large" color="#fb923c" />
+        <ActivityIndicator size="large" color="#10b981" />
         <Text style={{ marginTop: 8, color: '#6b7280' }}>Loading request…</Text>
       </View>
     );
@@ -193,14 +193,13 @@ export default function InvestorFundingRequestDetail() {
         <TouchableOpacity onPress={() => router.back()} style={{ padding: 8, marginRight: 6 }}>
           <Ionicons name="arrow-back" size={22} color="#111827" />
         </TouchableOpacity>
-        <Text style={{ fontSize: 18, fontWeight: '700', color: '#111827' }}>Funding Request #{request.id}</Text>
       </View>
 
       {/* Status banner */}
       <View style={{ paddingHorizontal: 12, paddingVertical: 10 }}>
-        <View style={{ backgroundColor: isApproved ? '#ecfdf5' : '#fff7ed', borderColor: isApproved ? '#10b981' : '#fb923c', borderWidth: 1, padding: 12, borderRadius: 12 }}>
+        <View style={{ backgroundColor: isApproved ? '#ecfdf5' : '#e0f2fe', borderColor: isApproved ? '#10b981' : '#0ea5e9', borderWidth: 1, padding: 12, borderRadius: 12 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Ionicons name={isApproved ? 'checkmark-circle' : 'time-outline'} size={18} color={isApproved ? '#10b981' : '#fb923c'} />
+            <Ionicons name={isApproved ? 'checkmark-circle' : 'time-outline'} size={18} color={isApproved ? '#10b981' : '#0ea5e9'} />
             <Text style={{ marginLeft: 8, color: '#111827', fontWeight: '600' }}>Status: {String(request.status || '').toUpperCase()}</Text>
           </View>
           <Text style={{ marginTop: 6, color: '#6b7280' }}>
@@ -215,7 +214,7 @@ export default function InvestorFundingRequestDetail() {
       <View style={{ backgroundColor: 'white', padding: 12, borderRadius: 12, marginHorizontal: 12, marginBottom: 12 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Ionicons name="document-attach-outline" size={18} color="#111827" />
+            <Ionicons name="document-attach-outline" size={18} color="#10b981" />
             <Text style={{ marginLeft: 6, fontWeight: '700', color: '#111827' }}>Documents</Text>
           </View>
           <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -258,7 +257,7 @@ export default function InvestorFundingRequestDetail() {
       {/* Chat */}
       <View style={{ flex: 1, backgroundColor: 'white', padding: 12, borderRadius: 12, marginHorizontal: 12, marginBottom: 12 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-          <Ionicons name="chatbubble-ellipses-outline" size={18} color="#111827" />
+          <Ionicons name="chatbubble-ellipses-outline" size={18} color="#10b981" />
           <Text style={{ marginLeft: 6, fontWeight: '700', color: '#111827' }}>Messages</Text>
         </View>
         {/* Admin approval notification banner */}
@@ -288,17 +287,6 @@ export default function InvestorFundingRequestDetail() {
             </View>
           )}
         />
-        <View style={{ flexDirection: 'row', marginTop: 8 }}>
-          <TextInput
-            value={message}
-            onChangeText={setMessage}
-            placeholder="Write a message"
-            style={{ flex: 1, backgroundColor: '#f3f4f6', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 }}
-          />
-          <TouchableOpacity onPress={onSend} disabled={sending} style={{ marginLeft: 8, backgroundColor: '#fb923c', borderRadius: 8, paddingHorizontal: 16, justifyContent: 'center' }}>
-            <Text style={{ color: 'white', fontWeight: '700' }}>{sending ? '...' : 'Send'}</Text>
-          </TouchableOpacity>
-        </View>
       </View>
     </View>
   );

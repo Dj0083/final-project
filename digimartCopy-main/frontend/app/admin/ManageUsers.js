@@ -58,10 +58,10 @@ export default function ManageUsers() {
         setAuthToken(user.token);
         return;
       }
-      
+
       const token = await SecureStore.getItemAsync('token');
       const userData = await SecureStore.getItemAsync('userData');
-      
+
       if (token && userData) {
         const parsedUserData = JSON.parse(userData);
         if (parsedUserData.role !== 'admin') {
@@ -93,12 +93,12 @@ export default function ManageUsers() {
 
     try {
       setLoading(true);
-      
-      const response = await api.get('/api/users/all', { 
+
+      const response = await api.get('/api/users/all', {
         params: { status: 'pending' },
         headers: { 'Authorization': `Bearer ${authToken}` }
       });
-      
+
       if (response.data.success) {
         const pendingUsers = (response.data.users || []).filter(u => u.status === 'pending');
         setUsers(pendingUsers);
@@ -107,7 +107,7 @@ export default function ManageUsers() {
       }
     } catch (error) {
       console.error('Error fetching users:', error);
-      
+
       if (error.response?.status === 401) {
         Alert.alert('Session Expired', 'Please login again', [
           { text: 'Login', onPress: () => router.push('/login') }
@@ -141,17 +141,17 @@ export default function ManageUsers() {
                   'Authorization': `Bearer ${authToken}`
                 }
               });
-              
+
               if (response.data.success) {
                 // Close modal first
                 setShowDetailsModal(false);
-                
+
                 // Refresh the pending users list
                 await fetchUsers();
-                
+
                 // Show success message
                 Alert.alert(
-                  '✅ User Approved!', 
+                  '✅ User Approved!',
                   'The user has been approved and is now active. They have been moved to the "All Users" screen and can now login to the system.',
                   [{ text: 'OK' }]
                 );
@@ -188,17 +188,17 @@ export default function ManageUsers() {
                   'Authorization': `Bearer ${authToken}`
                 }
               });
-              
+
               if (response.data.success) {
                 // Close modal first
                 setShowDetailsModal(false);
-                
+
                 // Refresh the pending users list
                 await fetchUsers();
-                
+
                 // Show success message
                 Alert.alert(
-                  '✅ User Rejected', 
+                  '✅ User Rejected',
                   'The user has been rejected and removed from pending approvals. They will appear as inactive in the "All Users" screen.',
                   [{ text: 'OK' }]
                 );
@@ -226,16 +226,16 @@ export default function ManageUsers() {
   // Apply filters to users list
   const applyFilters = () => {
     const filtered = users.filter(user => {
-      const matchesSearch = searchQuery.trim() === '' || 
-                           user.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           user.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           user.business_name?.toLowerCase().includes(searchQuery.toLowerCase());
-      
+      const matchesSearch = searchQuery.trim() === '' ||
+        user.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        user.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        user.business_name?.toLowerCase().includes(searchQuery.toLowerCase());
+
       const matchesRole = filter === 'all' || user.role === filter;
-      
+
       return matchesSearch && matchesRole;
     });
-    
+
     setFilteredUsers(filtered);
   };
 
@@ -319,16 +319,15 @@ export default function ManageUsers() {
           {filterTabs.map((item) => {
             const count = roleCounts[item.key] || 0;
             const isActive = filter === item.key;
-            
+
             return (
               <TouchableOpacity
                 key={item.key}
                 onPress={() => setFilter(item.key)}
-                className={`mr-3 px-5 py-3 rounded-2xl flex-row items-center border-2 ${
-                  isActive 
-                    ? `${item.color} ${item.borderColor} shadow-lg` 
+                className={`mr-3 px-5 py-3 rounded-2xl flex-row items-center border-2 ${isActive
+                    ? `${item.color} ${item.borderColor} shadow-lg`
                     : 'bg-white border-gray-200'
-                }`}
+                  }`}
                 style={{
                   elevation: isActive ? 5 : 0,
                   shadowColor: isActive ? '#000' : 'transparent',
@@ -338,41 +337,36 @@ export default function ManageUsers() {
                 }}
               >
                 {/* Icon Circle */}
-                <View className={`items-center justify-center w-12 h-12 rounded-full ${
-                  isActive ? 'bg-white bg-opacity-30' : 'bg-gray-100'
-                }`}>
+                <View className={`items-center justify-center w-12 h-12 rounded-full ${isActive ? 'bg-white bg-opacity-30' : 'bg-gray-100'
+                  }`}>
                   <Ionicons
                     name={item.icon}
                     size={22}
                     color={isActive ? 'white' : '#666'}
                   />
                 </View>
-                
+
                 {/* Label and Count */}
                 <View className="ml-3">
                   <Text
-                    className={`font-bold text-base ${
-                      isActive ? 'text-white' : 'text-gray-700'
-                    }`}
+                    className={`font-bold text-base ${isActive ? 'text-white' : 'text-gray-700'
+                      }`}
                   >
                     {item.label}
                   </Text>
                   <View className="flex-row items-center mt-1">
-                    <View className={`px-2 py-0.5 rounded-full ${
-                      isActive ? 'bg-white bg-opacity-30' : 'bg-gray-200'
-                    }`}>
+                    <View className={`px-2 py-0.5 rounded-full ${isActive ? 'bg-white bg-opacity-30' : 'bg-gray-200'
+                      }`}>
                       <Text
-                        className={`text-xs font-bold ${
-                          isActive ? 'text-white' : 'text-gray-600'
-                        }`}
+                        className={`text-xs font-bold ${isActive ? 'text-white' : 'text-gray-600'
+                          }`}
                       >
                         {count}
                       </Text>
                     </View>
                     <Text
-                      className={`ml-1 text-xs ${
-                        isActive ? 'text-white text-opacity-90' : 'text-gray-500'
-                      }`}
+                      className={`ml-1 text-xs ${isActive ? 'text-white text-opacity-90' : 'text-gray-500'
+                        }`}
                     >
                       {count === 1 ? 'user' : 'users'}
                     </Text>
@@ -412,8 +406,8 @@ export default function ManageUsers() {
               {searchQuery ? 'No matching users' : 'All Caught Up!'}
             </Text>
             <Text className="px-8 mt-2 text-center text-gray-500">
-              {searchQuery 
-                ? 'No pending users match your search criteria' 
+              {searchQuery
+                ? 'No pending users match your search criteria'
                 : 'No pending user approvals at the moment. All new registrations have been processed!'}
             </Text>
             <TouchableOpacity
@@ -451,11 +445,10 @@ export default function ManageUsers() {
                     <View className={`px-3 py-1 rounded-full ${getRoleBadgeColor(user.role)} mr-2 mb-1`}>
                       <Text className="text-xs font-medium">{user.role?.toUpperCase()}</Text>
                     </View>
-                    <View className={`px-3 py-1 rounded-full mb-1 ${
-                      user.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                      user.status === 'approved' ? 'bg-green-100 text-green-800' :
-                      'bg-red-100 text-red-800'
-                    }`}>
+                    <View className={`px-3 py-1 rounded-full mb-1 ${user.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                        user.status === 'approved' ? 'bg-green-100 text-green-800' :
+                          'bg-red-100 text-red-800'
+                      }`}>
                       <Text className="text-xs font-medium">{user.status?.toUpperCase()}</Text>
                     </View>
                     {user.business_name && (
@@ -531,11 +524,10 @@ export default function ManageUsers() {
                     <View className={`px-4 py-1 rounded-full ${getRoleBadgeColor(selectedUser.role)}`}>
                       <Text className="text-sm font-medium">{selectedUser.role?.toUpperCase()}</Text>
                     </View>
-                    <View className={`px-4 py-1 rounded-full ${
-                      selectedUser.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                      selectedUser.status === 'approved' ? 'bg-green-100 text-green-800' :
-                      'bg-red-100 text-red-800'
-                    }`}>
+                    <View className={`px-4 py-1 rounded-full ${selectedUser.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                        selectedUser.status === 'approved' ? 'bg-green-100 text-green-800' :
+                          'bg-red-100 text-red-800'
+                      }`}>
                       <Text className="text-sm font-medium">{selectedUser.status?.toUpperCase()}</Text>
                     </View>
                   </View>
