@@ -26,7 +26,7 @@ const { getDB } = require('./config/database');
 const io = require('socket.io')(server, {
   cors: {
     origin: '*',
-    methods: ['GET','POST']
+    methods: ['GET', 'POST']
   }
 });
 const PORT = process.env.PORT || 5000;
@@ -98,7 +98,7 @@ app.get('/p/:productId', async (req, res) => {
   if (appBase) {
     const url = new URL(`${appBase}/customer/ProductDetail`);
     url.searchParams.set('productId', String(productId));
-    Object.entries(req.query || {}).forEach(([k,v]) => {
+    Object.entries(req.query || {}).forEach(([k, v]) => {
       if (k === 'productId') return; // we already set it
       if (Array.isArray(v)) {
         v.forEach(val => url.searchParams.append(k, String(val)));
@@ -121,7 +121,7 @@ app.get('/p/:productId', async (req, res) => {
       try {
         const arr = JSON.parse(p.images || '[]');
         if (Array.isArray(arr) && arr.length) img = arr[0];
-      } catch {}
+      } catch { }
     }
 
     const price = p.price != null ? Number(p.price).toFixed(2) : '';
@@ -198,9 +198,9 @@ app.get('/api/test-db', async (req, res) => {
     const { getDB } = require('./config/database');
     const db = getDB();
     const [rows] = await db.execute('SELECT COUNT(*) as count FROM users');
-    res.json({ 
-      message: 'Database connected successfully', 
-      userCount: rows[0].count 
+    res.json({
+      message: 'Database connected successfully',
+      userCount: rows[0].count
     });
   } catch (error) {
     console.error('Database test error:', error);
@@ -286,7 +286,7 @@ initializeDatabase()
       console.log(`Server is running on port ${PORT}`);
     });
   })
-  .catch(error => { 
+  .catch(error => {
     console.error('Failed to start server:', error);
     process.exit(1);
   });

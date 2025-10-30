@@ -10,15 +10,15 @@ export const getImageBaseUrl = () => {
 // Build full image URL from relative path
 export const buildImageUrl = (imagePath) => {
   if (!imagePath) return 'https://via.placeholder.com/300x300';
-  
+
   // If already a full URL, return as is
   if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
     return imagePath;
   }
-  
+
   const baseUrl = getImageBaseUrl();
   const path = imagePath.startsWith('/') ? imagePath : `/${imagePath}`;
-  
+
   return `${baseUrl}${path}`;
 };
 

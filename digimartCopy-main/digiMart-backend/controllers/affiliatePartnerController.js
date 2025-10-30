@@ -315,7 +315,7 @@ exports.sendMessage = async (req, res) => {
 
     const sender_type = req.user.role === 'affiliate' ? 'affiliate' : 'vendor';
     const [result] = await db.execute(
-      `INSERT INTO affiliate_partner_messages (request_id, sender_id, message, sender_type) VALUES (?, ?, ?, ?)` ,
+      `INSERT INTO affiliate_partner_messages (request_id, sender_id, message, sender_type) VALUES (?, ?, ?, ?)`,
       [id, userId, message.trim(), sender_type]
     );
 
@@ -360,95 +360,95 @@ exports.listPartneredAffiliatesForSeller = async (req, res) => {
 
 // Generate a product link for a partnered affiliate request
 exports.getProductLink = async (req, res) => {
-try {
-  const userId = req.user.userId; // seller or affiliate
-  const { id } = req.params; // request id
-  const { product_id } = req.query;
-  if (!product_id) {
-    return res.status(400).json({ success: false, error: 'product_id is required' });
-  }
+  try {
+    const userId = req.user.userId; // seller or affiliate
+    const { id } = req.params; // request id
+    const { product_id } = req.query;
+    if (!product_id) {
+      return res.status(400).json({ success: false, error: 'product_id is required' });
+    }
 
-  const db = getDB();
-  const allowed = await ensureParticipant(db, id, userId);
-  if (!allowed) return res.status(403).json({ success: false, error: 'Access denied' });
+    const db = getDB();
+    const allowed = await ensureParticipant(db, id, userId);
+    if (!allowed) return res.status(403).json({ success: false, error: 'Access denied' });
 
-  // Fetch affiliate code for the affiliate user on this request
-  const [[row]] = await db.execute(
-    `SELECT a.id as affiliate_id, a.affiliate_code
+    // Fetch affiliate code for the affiliate user on this request
+    const [[row]] = await db.execute(
+      `SELECT a.id as affiliate_id, a.affiliate_code
      FROM affiliate_partner_requests r
      JOIN affiliates a ON a.user_id = r.affiliate_user_id
      WHERE r.id = ?`,
-    [id]
-  );
-  let code = row?.affiliate_code;
-  const affiliateId = row?.affiliate_id;
-  if (!code && affiliateId) {
-    // Generate a unique code on-the-fly if missing
-    let tries = 0; let newCode;
-    while (tries++ < 10) {
-      const n = Math.floor(100 + Math.random() * 900);
-      newCode = `AFF${n}`;
-      const [dup] = await db.execute('SELECT id FROM affiliates WHERE affiliate_code = ?', [newCode]);
-      if (dup.length === 0) break;
+      [id]
+    );
+    let code = row?.affiliate_code;
+    const affiliateId = row?.affiliate_id;
+    if (!code && affiliateId) {
+      // Generate a unique code on-the-fly if missing
+      let tries = 0; let newCode;
+      while (tries++ < 10) {
+        const n = Math.floor(100 + Math.random() * 900);
+        newCode = `AFF${n}`;
+        const [dup] = await db.execute('SELECT id FROM affiliates WHERE affiliate_code = ?', [newCode]);
+        if (dup.length === 0) break;
+      }
+      if (!newCode) newCode = `AFF${Date.now().toString().slice(-3)}`;
+      await db.execute('UPDATE affiliates SET affiliate_code = ? WHERE id = ?', [newCode, affiliateId]);
+      code = newCode;
     }
-    if (!newCode) newCode = `AFF${Date.now().toString().slice(-3)}`;
-    await db.execute('UPDATE affiliates SET affiliate_code = ? WHERE id = ?', [newCode, affiliateId]);
-    code = newCode;
+    if (!code) return res.status(404).json({ success: false, error: 'Affiliate code not found' });
+
+    const appBase = process.env.PUBLIC_APP_BASE || 'https://app.example.com';
+    const link = `${appBase}/customer/ProductDetail?productId=${encodeURIComponent(product_id)}&aff=${encodeURIComponent(code)}`;
+
+    // Also provide a short tracking link that records the click then redirects
+    const host = req.get('host');
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+    const backendBase = process.env.PUBLIC_BACKEND_BASE || `${protocol}://${host}`;
+    const short_link = `${backendBase}/p/${encodeURIComponent(product_id)}?aff=${encodeURIComponent(code)}`;
+
+    res.json({ success: true, link, short_link, affiliate_code: code });
+  } catch (error) {
+    console.error('getProductLink error:', error);
+    res.status(500).json({ success: false, error: 'Failed to generate product link' });
   }
-  if (!code) return res.status(404).json({ success: false, error: 'Affiliate code not found' });
-
-  const appBase = process.env.PUBLIC_APP_BASE || 'https://app.example.com';
-  const link = `${appBase}/customer/ProductDetail?productId=${encodeURIComponent(product_id)}&aff=${encodeURIComponent(code)}`;
-
-  // Also provide a short tracking link that records the click then redirects
-  const host = req.get('host');
-  const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
-  const backendBase = process.env.PUBLIC_BACKEND_BASE || `${protocol}://${host}`;
-  const short_link = `${backendBase}/p/${encodeURIComponent(product_id)}?aff=${encodeURIComponent(code)}`;
-
-  res.json({ success: true, link, short_link, affiliate_code: code });
-} catch (error) {
-  console.error('getProductLink error:', error);
-  res.status(500).json({ success: false, error: 'Failed to generate product link' });
-}
 };
 
 // Get a simple agreement text for a partnered affiliate request
 exports.getAgreement = async (req, res) => {
-try {
-  const userId = req.user.userId; // participant
-  const { id } = req.params; // request id
-  const db = getDB();
-  const allowed = await ensureParticipant(db, id, userId);
-  if (!allowed) return res.status(403).json({ success: false, error: 'Access denied' });
+  try {
+    const userId = req.user.userId; // participant
+    const { id } = req.params; // request id
+    const db = getDB();
+    const allowed = await ensureParticipant(db, id, userId);
+    if (!allowed) return res.status(403).json({ success: false, error: 'Access denied' });
 
-  const [[reqRow]] = await db.execute(
-    `SELECT r.id, r.seller_id, r.affiliate_user_id, r.status, r.created_at, r.responded_at,
+    const [[reqRow]] = await db.execute(
+      `SELECT r.id, r.seller_id, r.affiliate_user_id, r.status, r.created_at, r.responded_at,
             u1.name AS seller_name, u2.name AS affiliate_name
      FROM affiliate_partner_requests r
      JOIN users u1 ON u1.id = r.seller_id
      JOIN users u2 ON u2.id = r.affiliate_user_id
      WHERE r.id = ?`,
-    [id]
-  );
-  if (!reqRow) return res.status(404).json({ success: false, error: 'Partner request not found' });
+      [id]
+    );
+    if (!reqRow) return res.status(404).json({ success: false, error: 'Partner request not found' });
 
-  const agreement = {
-    title: 'Affiliate Partnership Agreement',
-    seller: { id: reqRow.seller_id, name: reqRow.seller_name },
-    affiliate: { id: reqRow.affiliate_user_id, name: reqRow.affiliate_name },
-    status: reqRow.status,
-    effective_date: reqRow.responded_at || reqRow.created_at,
-    terms: [
-      'Parties agree to collaborate on promoting seller products.',
-      'Affiliate will use the provided tracking link for attribution.',
-      'Commission structure and payout schedule are governed by platform policies.',
-    ],
-  };
+    const agreement = {
+      title: 'Affiliate Partnership Agreement',
+      seller: { id: reqRow.seller_id, name: reqRow.seller_name },
+      affiliate: { id: reqRow.affiliate_user_id, name: reqRow.affiliate_name },
+      status: reqRow.status,
+      effective_date: reqRow.responded_at || reqRow.created_at,
+      terms: [
+        'Parties agree to collaborate on promoting seller products.',
+        'Affiliate will use the provided tracking link for attribution.',
+        'Commission structure and payout schedule are governed by platform policies.',
+      ],
+    };
 
-  res.json({ success: true, agreement });
-} catch (error) {
-  console.error('getAgreement error:', error);
-  res.status(500).json({ success: false, error: 'Failed to fetch agreement' });
-}
+    res.json({ success: true, agreement });
+  } catch (error) {
+    console.error('getAgreement error:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch agreement' });
+  }
 };

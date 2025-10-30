@@ -100,7 +100,7 @@ export default function AffiliateConnection() {
             if (!r) return { ...a, requestStatus: null, requested: false, requestId: null };
             return { ...a, requested: r.status === 'pending' || r.status === 'accepted', requestStatus: r.status, requestId: r.id };
           }));
-        } catch {}
+        } catch { }
       };
       refresh();
       return () => { cancelled = true; };
@@ -152,7 +152,7 @@ export default function AffiliateConnection() {
       if (!link) throw new Error('No link');
       const finalLink = shortLink || link;
       await Clipboard.setStringAsync(finalLink);
-      try { await Share.share({ message: finalLink }); } catch {}
+      try { await Share.share({ message: finalLink }); } catch { }
       Alert.alert('Product Link', 'Link copied to clipboard. You can paste it to share with the affiliate.');
     } catch (e) {
       Alert.alert('Product Link', 'Failed to generate link');
@@ -198,7 +198,7 @@ export default function AffiliateConnection() {
       setLinkRequestId(null);
       setLinkProductId(null);
       await Clipboard.setStringAsync(link);
-      try { await Share.share({ message: link }); } catch {}
+      try { await Share.share({ message: link }); } catch { }
       Alert.alert('Product Link', 'Link copied to clipboard and ready to share.');
     } catch (e) {
       Alert.alert('Generate Link', 'Failed to generate link');
@@ -428,32 +428,28 @@ export default function AffiliateConnection() {
       {/* Tabs */}
       <View className="flex-row justify-around p-2 bg-white rounded-t-2xl">
         <Pressable
-          className={`flex-1 flex-row items-center justify-center p-3 mx-1 rounded-xl ${
-            activeTab === "explore" ? "bg-orange-400" : "bg-gray-200"
-          }`}
+          className={`flex-1 flex-row items-center justify-center p-3 mx-1 rounded-xl ${activeTab === "explore" ? "bg-orange-400" : "bg-gray-200"
+            }`}
           onPress={() => setActiveTab("explore")}
         >
           <Search size={18} color={activeTab === "explore" ? "white" : "black"} className="mr-1" />
           <Text
-            className={`font-semibold ${
-              activeTab === "explore" ? "text-white" : "text-gray-700"
-            }`}
+            className={`font-semibold ${activeTab === "explore" ? "text-white" : "text-gray-700"
+              }`}
           >
             Explore Affiliates
           </Text>
         </Pressable>
 
         <Pressable
-          className={`flex-1 flex-row items-center justify-center p-3 mx-1 rounded-xl ${
-            activeTab === "partnered" ? "bg-orange-400" : "bg-gray-200"
-          }`}
+          className={`flex-1 flex-row items-center justify-center p-3 mx-1 rounded-xl ${activeTab === "partnered" ? "bg-orange-400" : "bg-gray-200"
+            }`}
           onPress={() => setActiveTab("partnered")}
         >
           <Users size={18} color={activeTab === "partnered" ? "white" : "black"} className="mr-1" />
           <Text
-            className={`font-semibold ${
-              activeTab === "partnered" ? "text-white" : "text-gray-700"
-            }`}
+            className={`font-semibold ${activeTab === "partnered" ? "text-white" : "text-gray-700"
+              }`}
           >
             Partnered Affiliates
           </Text>
@@ -519,9 +515,8 @@ export default function AffiliateConnection() {
                   <Pressable
                     disabled={affiliate.requested && affiliate.requestStatus !== 'rejected'}
                     onPress={() => openRequestModal(affiliate)}
-                    className={`px-3 py-2 rounded-xl ${
-                      affiliate.requestStatus === 'accepted' ? "bg-green-500" : (affiliate.requested ? "bg-blue-300" : "bg-blue-500")
-                    }`}
+                    className={`px-3 py-2 rounded-xl ${affiliate.requestStatus === 'accepted' ? "bg-green-500" : (affiliate.requested ? "bg-blue-300" : "bg-blue-500")
+                      }`}
                   >
                     <Text className="text-white">
                       {affiliate.requestStatus === 'accepted' ? 'Partnered' : (affiliate.requested ? 'Requested' : 'Request')}

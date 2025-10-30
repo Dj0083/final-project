@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, SafeAreaView, Image, Alert } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -14,6 +14,13 @@ export default function Cart() {
   useEffect(() => {
     loadCartItems();
   }, []);
+
+  // Reload cart whenever the screen comes into focus (e.g., after successful checkout)
+  useFocusEffect(
+    useCallback(() => {
+      loadCartItems();
+    }, [])
+  );
 
   // Calculate total safely
   const calculateTotal = useCallback(() => {
@@ -51,10 +58,21 @@ export default function Cart() {
         cartItems.map(async (item) => {
           try {
             const response = await API.get(`/products/${item.id}`);
-            const productData = response.data;
+            const payload = response?.data || {};
+            const productData = payload.product || payload || {};
+            // Extract stock from various possible fields
+            const rawStock = (
+              productData.stock_quantity ??
+              productData.stockQty ??
+              productData.stock ??
+              productData.available_quantity ??
+              productData.availableQty ??
+              productData.quantity
+            );
+            const normalizedStock = Number(rawStock ?? 0) || 0;
             return {
               ...item,
-              stock_quantity: productData.stock_quantity || productData.stockQty || 0
+              stock_quantity: normalizedStock
             };
           } catch (error) {
             console.warn(`Failed to fetch stock for product ${item.id}:`, error);
@@ -106,11 +124,47 @@ export default function Cart() {
     }
   };
 
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
     if (cartItems.length === 0) {
       Alert.alert('Cart Empty', 'Your cart is empty. Add some items first.');
       return;
     }
+
+    // Validate stock before proceeding
+    const outOfStock = cartItems.filter(it => (it.stock_quantity ?? 0) <= 0);
+    const overQty = cartItems.filter(it => (it.stock_quantity ?? 0) > 0 && Number(it.quantity) > Number(it.stock_quantity));
+
+    if (outOfStock.length > 0 || overQty.length > 0) {
+      const messages = [];
+      if (outOfStock.length > 0) messages.push(`${outOfStock.length} item(s) are out of stock`);
+      if (overQty.length > 0) messages.push(`${overQty.length} item(s) exceed available stock`);
+
+      Alert.alert(
+        'Update Your Cart',
+        messages.join('\n'),
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Fix Automatically',
+            onPress: async () => {
+              try {
+                const fixed = cartItems
+                  .filter(it => (it.stock_quantity ?? 0) > 0) // drop OOS
+                  .map(it => ({
+                    ...it,
+                    quantity: Math.min(Number(it.quantity) || 1, Number(it.stock_quantity) || 0)
+                  }))
+                  .filter(it => it.quantity > 0);
+                setCartItems(fixed);
+                await AsyncStorage.setItem('cart', JSON.stringify(fixed));
+              } catch {}
+            }
+          }
+        ]
+      );
+      return;
+    }
+
     router.push('/customer/checkout');
   };
 
@@ -118,7 +172,11 @@ export default function Cart() {
     try {
       // Fetch current stock from API to ensure accuracy
       const response = await API.get(`/products/${item.id}`);
-      const currentStock = response.data.stock_quantity || response.data.stockQty || 0;
+      const payload = response?.data || {};
+      const pd = payload.product || payload || {};
+      const currentStock = Number(
+        pd.stock_quantity ?? pd.stockQty ?? pd.stock ?? pd.available_quantity ?? pd.availableQty ?? pd.quantity ?? 0
+      ) || 0;
       
       if (item.quantity >= currentStock) {
         Alert.alert(
@@ -191,7 +249,13 @@ export default function Cart() {
               const safeName = item.name || item.productName || 'Unknown Product';
               const safePrice = item.price || 0;
               const safeQuantity = parseInt(item.quantity) || 1;
-              const safeStockQuantity = typeof item.stock_quantity === 'number' ? item.stock_quantity : null;
+              const derivedStock = (
+                typeof item.stock_quantity !== 'undefined' ? item.stock_quantity :
+                (typeof item.stockQty !== 'undefined' ? item.stockQty : item.stock)
+              );
+              const safeStockQuantity = (derivedStock === null || typeof derivedStock === 'undefined')
+                ? null
+                : Number(derivedStock) || 0;
               const safeImage = item.image || item.imageUrl || 'https://via.placeholder.com/80x80';
 
               return (

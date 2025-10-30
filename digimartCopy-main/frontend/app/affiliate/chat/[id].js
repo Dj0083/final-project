@@ -64,7 +64,7 @@ export default function AffiliateChatScreen() {
   const copyLatestLink = async () => {
     const link = getLatestLink();
     if (!link) return Alert.alert('Copy Link', 'No link found in this chat yet');
-    try { await Clipboard.setStringAsync(link); Alert.alert('Copied', 'Latest link copied to clipboard'); } catch {}
+    try { await Clipboard.setStringAsync(link); Alert.alert('Copied', 'Latest link copied to clipboard'); } catch { }
   };
 
   const openProductFromLink = (url) => {
@@ -102,7 +102,7 @@ export default function AffiliateChatScreen() {
       const prof = await api.get('/api/users/profile');
       const r = (prof.data?.user?.role || '').toLowerCase();
       setRole(r);
-    } catch {}
+    } catch { }
   }, []);
 
   const fetchMessages = useCallback(async () => {
@@ -267,7 +267,7 @@ export default function AffiliateChatScreen() {
       setShowLinkPicker(false);
       setPickedProductId(null);
       await Clipboard.setStringAsync(link);
-      try { await Share.share({ message: link }); } catch {}
+      try { await Share.share({ message: link }); } catch { }
       Alert.alert('Product Link', 'Link copied. Paste or share to send.');
     } catch (e) {
       Alert.alert('Product Link', 'Failed to generate link');
@@ -401,10 +401,10 @@ export default function AffiliateChatScreen() {
                   </View>
                   {hasLink && firstLink && (
                     <View style={{ flexDirection: 'row', marginTop: 6 }}>
-                      <TouchableOpacity onPress={async () => { try { await Clipboard.setStringAsync(firstLink); Alert.alert('Copied', 'Link copied to clipboard'); } catch {} }} style={{ backgroundColor: '#e5e7eb', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, marginRight: 8 }}>
+                      <TouchableOpacity onPress={async () => { try { await Clipboard.setStringAsync(firstLink); Alert.alert('Copied', 'Link copied to clipboard'); } catch { } }} style={{ backgroundColor: '#e5e7eb', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, marginRight: 8 }}>
                         <Text style={{ color: '#111', fontWeight: '600' }}>Copy</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity onPress={async () => { try { await Share.share({ message: firstLink }); } catch {} }} style={{ backgroundColor: '#e5e7eb', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
+                      <TouchableOpacity onPress={async () => { try { await Share.share({ message: firstLink }); } catch { } }} style={{ backgroundColor: '#e5e7eb', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
                         <Text style={{ color: '#111', fontWeight: '600' }}>Share</Text>
                       </TouchableOpacity>
                       <TouchableOpacity onPress={() => openProductFromLink(firstLink)} style={{ backgroundColor: '#10B981', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, marginLeft: 8 }}>
@@ -430,9 +430,9 @@ export default function AffiliateChatScreen() {
               </TouchableOpacity>
             </View>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8, marginBottom: 8 }}>
-              {['instagram','youtube','facebook','whatsapp','x','tiktok','blog'].map(ch => (
-                <TouchableOpacity key={ch} onPress={() => setUtmSource(ch)} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: utmSource===ch?'#8B5CF6':'#e5e7eb', marginRight: 8, marginBottom: 8 }}>
-                  <Text style={{ color: utmSource===ch?'#8B5CF6':'#111' }}>{ch}</Text>
+              {['instagram', 'youtube', 'facebook', 'whatsapp', 'x', 'tiktok', 'blog'].map(ch => (
+                <TouchableOpacity key={ch} onPress={() => setUtmSource(ch)} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: utmSource === ch ? '#8B5CF6' : '#e5e7eb', marginRight: 8, marginBottom: 8 }}>
+                  <Text style={{ color: utmSource === ch ? '#8B5CF6' : '#111' }}>{ch}</Text>
                 </TouchableOpacity>
               ))}
             </View>

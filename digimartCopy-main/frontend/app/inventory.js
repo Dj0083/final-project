@@ -40,7 +40,7 @@ export default function Inventory() {
       if (!refreshing) {
         setLoading(true);
       }
-      
+
       console.log('═══════════════════════════════════════════════════════');
       console.log('🔄 FETCHING INVENTORY FOR SELLER');
       console.log('═══════════════════════════════════════════════════════');
@@ -50,7 +50,7 @@ export default function Inventory() {
       console.log('📋 User Role:', user?.role);
       console.log('🔒 SECURITY: Only this seller\'s products will be shown');
       console.log('═══════════════════════════════════════════════════════');
-      
+
       // SECURITY: Only allow sellers to access inventory
       if (!user) {
         console.log('🚫 ACCESS DENIED: No user found');
@@ -72,33 +72,33 @@ export default function Inventory() {
       console.log('🔑 JWT token will identify seller automatically');
       const response = await API.get('/products/inventory');
       const categorizedProducts = response.data;
-      
+
       console.log('✅ Backend response received');
       console.log('📊 Response structure:', Object.keys(categorizedProducts));
-      
+
       // Backend returns pre-categorized data filtered by seller_id
-      const totalProducts = (categorizedProducts.Active?.length || 0) + 
-                           (categorizedProducts['Out of Stock']?.length || 0) + 
-                           (categorizedProducts.Violation?.length || 0);
-      
+      const totalProducts = (categorizedProducts.Active?.length || 0) +
+        (categorizedProducts['Out of Stock']?.length || 0) +
+        (categorizedProducts.Violation?.length || 0);
+
       console.log('✅ Pre-categorized data from backend');
       console.log('📊 INVENTORY SUMMARY FOR SELLER:', user?.name, '(ID:', user?.id + ')');
       console.log('   ✅ Active Products:', categorizedProducts.Active?.length || 0);
       console.log('   📦 Out of Stock:', categorizedProducts['Out of Stock']?.length || 0);
       console.log('   ⚠️  Violations:', categorizedProducts.Violation?.length || 0);
       console.log('   📊 TOTAL PRODUCTS:', totalProducts);
-      
+
       console.log('═══════════════════════════════════════════════════════');
       console.log('✅ INVENTORY LOADED - ALL PRODUCTS FILTERED BY BACKEND');
       console.log('🔒 Seller:', user?.name, '| Seller ID:', user?.id);
       console.log('═══════════════════════════════════════════════════════');
-      
+
       setData({
         Active: (categorizedProducts.Active || []).map(formatProductForDisplay),
         "Out of Stock": (categorizedProducts['Out of Stock'] || []).map(formatProductForDisplay),
         Violation: (categorizedProducts.Violation || []).map(formatProductForDisplay),
       });
-      
+
     } catch (error) {
       console.error('❌ Error fetching seller products:', error);
       console.error('Error details:', {
@@ -106,7 +106,7 @@ export default function Inventory() {
         message: error.message,
         data: error.response?.data
       });
-      
+
       Alert.alert(
         'Error Loading Inventory',
         'Failed to load your inventory. Please check your connection and try again.',
@@ -115,14 +115,14 @@ export default function Inventory() {
           { text: 'Cancel', style: 'cancel' }
         ]
       );
-      
+
       // Set empty data on error
       setData({
         Active: [],
         "Out of Stock": [],
         Violation: [],
       });
-      
+
     } finally {
       setLoading(false);
     }
@@ -130,55 +130,44 @@ export default function Inventory() {
 
   // Helper function to get product image URL
   const getProductImageUrl = (product) => {
-    // Priority 1: Try direct image URL
-    if (product.image && product.image.startsWith('http')) {
-      return product.image;
+    const directUrlFields = ['image', 'imageUrl', 'thumbnail', 'featured_image', 'photo'];
+    for (const key of directUrlFields) {
+      const val = product?.[key];
+      if (typeof val === 'string' && (val.startsWith('http://') || val.startsWith('https://'))) {
+        return val;
+      }
     }
-    
-    // Priority 2: Try imageUrl field
-    if (product.imageUrl && product.imageUrl.startsWith('http')) {
-      return product.imageUrl;
-    }
-    
-    // Priority 3: Try images array
+
     if (product.images) {
       let imgs = product.images;
-      
-      // Handle string JSON
       if (typeof imgs === 'string') {
         try {
           imgs = JSON.parse(imgs);
-        } catch (err) {
-          console.log('Failed to parse images JSON:', err.message);
-          return null;
-        }
-      }
-      
-      // Handle array
-      if (Array.isArray(imgs) && imgs.length > 0) {
-        const firstImage = imgs[0];
-        if (firstImage) {
-          if (typeof firstImage === 'string') {
-            return buildImageUrl(firstImage);
-          } else if (firstImage.path) {
-            return buildImageUrl(firstImage.path);
-          } else if (firstImage.url) {
-            return firstImage.url;
+        } catch (_) {
+          const parts = imgs.split(',').map(s => s.trim()).filter(Boolean);
+          if (parts.length > 0) {
+            return buildImageUrl(parts[0]);
           }
+          imgs = [];
         }
       }
+      if (Array.isArray(imgs) && imgs.length > 0) {
+        const first = imgs[0];
+        if (typeof first === 'string') return buildImageUrl(first);
+        if (first?.path) return buildImageUrl(first.path);
+        if (first?.url) return first.url;
+      }
     }
-    
-    // Priority 4: Construct from relative paths
-    if (product.image) {
-      return buildImageUrl(product.image);
+
+    const relativeFields = ['image', 'imageUrl', 'image_path', 'product_image', 'thumbnail', 'featured_image', 'photo'];
+    for (const key of relativeFields) {
+      const val = product?.[key];
+      if (typeof val === 'string' && val.length > 0) {
+        return buildImageUrl(val);
+      }
     }
-    
-    if (product.imageUrl) {
-      return buildImageUrl(product.imageUrl);
-    }
-    
-    return null; // No valid image found
+
+    return buildImageUrl('/uploads/placeholder.png');
   };
 
   // Helper function to format product for display
@@ -193,6 +182,8 @@ export default function Inventory() {
     violation: product.violation || product.violationReason || null,
     originalId: product.id, // Keep original ID for API calls
   });
+
+  const safeImageUri = (uri) => uri || buildImageUrl('/uploads/placeholder.png');
 
   // useEffect to fetch data when component mounts
   useEffect(() => {
@@ -219,21 +210,21 @@ export default function Inventory() {
       Alert.alert('Invalid Price', 'Please enter a valid price greater than 0');
       return;
     }
-    
+
     try {
       console.log('🔄 Updating price for product:', editingItem.originalId || editingItem.id);
-      
+
       const response = await API.put(`/products/${editingItem.originalId || editingItem.id}`, {
         price: price
       });
-      
+
       console.log('✅ Price update successful:', response.data);
       setEditModalVisible(false);
       Alert.alert('Success', `Price updated to LKR ${price}`);
-      
+
       // Refresh inventory to get latest data
       await fetchSellerProducts();
-      
+
     } catch (error) {
       console.error('❌ Error updating price:', error);
       Alert.alert('Update Failed', 'Failed to update price. Please try again.');
@@ -254,27 +245,27 @@ export default function Inventory() {
       Alert.alert('Invalid Stock', 'Please enter a valid quantity to add (0 or greater)');
       return;
     }
-    
+
     try {
       console.log('🔄 Adding stock for product:', editingItem.originalId || editingItem.id);
       console.log('   Current stock:', editingItem.stock);
       console.log('   Adding:', addQuantity);
-      
+
       // Calculate new total stock = existing + new quantity
       const newTotalStock = editingItem.stock + addQuantity;
       console.log('   New total stock:', newTotalStock);
-      
+
       const response = await API.put(`/products/${editingItem.originalId || editingItem.id}`, {
         stockQty: newTotalStock
       });
-      
+
       console.log('✅ Stock update successful:', response.data);
       setEditModalVisible(false);
       Alert.alert('Success', `Added ${addQuantity} units. Total stock: ${newTotalStock} units`);
-      
+
       // Refresh inventory to get latest data and correct categorization
       await fetchSellerProducts();
-      
+
     } catch (error) {
       console.error('❌ Error updating stock:', error);
       Alert.alert('Update Failed', 'Failed to update stock. Please try again.');
@@ -295,22 +286,22 @@ export default function Inventory() {
       Alert.alert('Invalid Stock', 'Please enter a valid stock quantity greater than 0');
       return;
     }
-    
+
     try {
       console.log('🔄 Restocking product:', editingItem.originalId || editingItem.id);
-      
+
       const response = await API.put(`/products/${editingItem.originalId || editingItem.id}`, {
         stockQty: stock
       });
-      
+
       console.log('✅ Restock successful:', response.data);
       setEditModalVisible(false);
       Alert.alert('Restocked', `${editingItem.name} is now available with ${stock} units in stock.`);
-      
+
       // Refresh inventory and switch to Active tab
       await fetchSellerProducts();
       setActiveTab("Active");
-      
+
     } catch (error) {
       console.error('❌ Error restocking product:', error);
       Alert.alert('Restock Failed', 'Failed to restock product. Please try again.');
@@ -339,11 +330,10 @@ export default function Inventory() {
         {["Active", "Out of Stock", "Violation"].map((tab) => (
           <Pressable key={tab} onPress={() => setActiveTab(tab)}>
             <Text
-              className={`px-4 py-1 rounded-full font-semibold ${
-                activeTab === tab
+              className={`px-4 py-1 rounded-full font-semibold ${activeTab === tab
                   ? "bg-yellow-300 text-white"
                   : "text-gray-700 bg-orange-200"
-              }`}
+                }`}
             >
               {tab} ({data[tab]?.length || 0})
             </Text>
@@ -373,28 +363,28 @@ export default function Inventory() {
 
         {!loading && data[activeTab].length === 0 && (
           <View className="items-center justify-center py-8">
-            <Ionicons 
-              name={activeTab === "Active" ? "storefront-outline" : 
-                    activeTab === "Out of Stock" ? "alert-circle-outline" : 
-                    "warning-outline"} 
-              size={64} 
-              color="#9CA3AF" 
+            <Ionicons
+              name={activeTab === "Active" ? "storefront-outline" :
+                activeTab === "Out of Stock" ? "alert-circle-outline" :
+                  "warning-outline"}
+              size={64}
+              color="#9CA3AF"
             />
             <Text className="mt-4 text-lg font-semibold text-gray-600">
               {activeTab === "Active" ? "No Active Products" :
-               activeTab === "Out of Stock" ? "No Out of Stock Products" :
-               "No Violations"}
+                activeTab === "Out of Stock" ? "No Out of Stock Products" :
+                  "No Violations"}
             </Text>
             <Text className="mt-2 text-center text-gray-500">
-              {activeTab === "Active" ? 
-                "You haven't added any products yet.\nStart selling by adding your first product!" : 
+              {activeTab === "Active" ?
+                "You haven't added any products yet.\nStart selling by adding your first product!" :
                 activeTab === "Out of Stock" ?
-                "All your products are in stock!" :
-                "Great! No policy violations found."}
+                  "All your products are in stock!" :
+                  "Great! No policy violations found."}
             </Text>
-            
+
             {activeTab === "Active" && (
-              <TouchableOpacity 
+              <TouchableOpacity
                 onPress={() => router.push("/add-product")}
                 className="px-6 py-3 mt-4 bg-orange-500 rounded-full"
               >
@@ -403,16 +393,19 @@ export default function Inventory() {
             )}
           </View>
         )}
-        
+
         {data[activeTab].map((item) => (
           <View
             key={item.id}
             className="p-4 mb-4 bg-white shadow-lg rounded-2xl"
           >
             <Image
-              source={{ uri: item.image }}
+              source={{ uri: safeImageUri(item.image) }}
               className="w-full mb-3 h-44 rounded-xl"
               resizeMode="cover"
+              onError={(e) => {
+                console.log('Image failed to load:', item.image, 'error:', e?.nativeEvent?.error);
+              }}
             />
             <Text className="text-sm font-bold">{item.name}</Text>
             <Text className="text-sm">Product ID: {item.id}</Text>
@@ -427,13 +420,13 @@ export default function Inventory() {
 
             {activeTab === "Active" && (
               <View className="flex-row justify-between mt-2">
-                <Pressable 
+                <Pressable
                   onPress={() => handleEditPrice(item)}
                   className="items-center flex-1 px-4 py-2 mr-2 bg-red-500 rounded-2xl"
                 >
                   <Text className="font-semibold text-white">Edit Price</Text>
                 </Pressable>
-                <Pressable 
+                <Pressable
                   onPress={() => handleEditStock(item)}
                   className="items-center flex-1 px-4 py-2 ml-2 bg-blue-500 rounded-2xl"
                 >
@@ -468,18 +461,18 @@ export default function Inventory() {
             <Text className="mb-4 text-lg font-bold">
               {editType === 'price' ? 'Edit Price' : editType === 'stock' ? 'Add Stock' : 'Restock Product'}
             </Text>
-            
+
             {editingItem && (
               <>
                 <Text className="mb-2 text-gray-600">
-                  {editType === 'price' 
-                    ? `Enter new price for ${editingItem.name}:` 
+                  {editType === 'price'
+                    ? `Enter new price for ${editingItem.name}:`
                     : editType === 'stock'
-                    ? `Add quantity to ${editingItem.name}:`
-                    : `Enter stock quantity for ${editingItem.name}:`
+                      ? `Add quantity to ${editingItem.name}:`
+                      : `Enter stock quantity for ${editingItem.name}:`
                   }
                 </Text>
-                
+
                 {editType === 'stock' && (
                   <View className="p-3 mb-3 rounded-lg bg-blue-50">
                     <Text className="text-sm text-gray-700">
@@ -509,7 +502,7 @@ export default function Inventory() {
               >
                 <Text className="font-semibold text-gray-700">Cancel</Text>
               </TouchableOpacity>
-              
+
               <TouchableOpacity
                 onPress={editType === 'price' ? handleEditPriceSubmit : editType === 'stock' ? handleEditStockSubmit : handleRestockSubmit}
                 className={`px-6 py-3 rounded-lg ${editType === 'restock' ? 'bg-green-500' : 'bg-blue-500'}`}

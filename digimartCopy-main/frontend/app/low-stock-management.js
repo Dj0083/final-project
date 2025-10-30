@@ -38,22 +38,22 @@ export default function LowStockManagement() {
     try {
       setLoading(true);
       console.log('Fetching low stock products...');
-      
+
       // Fetch seller's products
       let response;
       let allProducts = [];
-      
+
       try {
         response = await API.get('/products/inventory');
         console.log('Products response:', response.data);
-        
+
         const categorizedProducts = response.data;
         allProducts = [
           ...(categorizedProducts.Active || []),
           ...(categorizedProducts['Out of Stock'] || []),
           ...(categorizedProducts.Violation || [])
         ];
-        
+
         // Debug image data
         allProducts.forEach(product => {
           console.log(`Product ${product.name || product.id}: image = ${product.image}`);
@@ -64,11 +64,11 @@ export default function LowStockManagement() {
           console.log('Trying fallback products endpoint...');
           response = await API.get('/products');
           allProducts = response.data.products || [];
-          
+
           // Process images for fallback data (convert images array to image URL)
           allProducts = allProducts.map(product => {
             let processedImage = 'https://via.placeholder.com/150';
-            
+
             if (product.images) {
               let imgs = product.images;
               if (typeof imgs === 'string') {
@@ -83,7 +83,7 @@ export default function LowStockManagement() {
                 processedImage = `http://192.168.43.219:5000${imgs[0].path}`;
               }
             }
-            
+
             return {
               ...product,
               name: product.name || product.productName,
@@ -92,29 +92,29 @@ export default function LowStockManagement() {
               image: processedImage
             };
           });
-          
+
           console.log('Processed fallback products with images:', allProducts.length);
         } else {
           throw error;
         }
       }
-      
+
       // Filter low stock products (stock > 0 AND stock < 4) and out of stock (stock = 0)
       const lowStockProducts = allProducts.filter(product => {
         const stock = product.stock || product.stockQty || 0;
         return stock >= 0 && stock < 4;
       });
-      
+
       // Sort by stock quantity (lowest first)
       lowStockProducts.sort((a, b) => {
         const stockA = a.stock || a.stockQty || 0;
         const stockB = b.stock || b.stockQty || 0;
         return stockA - stockB;
       });
-      
+
       setProducts(lowStockProducts);
       console.log('Low stock products found:', lowStockProducts.length);
-      
+
     } catch (error) {
       console.error('Error fetching low stock products:', error);
       Alert.alert('Error', 'Failed to load products. Please try again.');
@@ -150,24 +150,24 @@ export default function LowStockManagement() {
     try {
       setRestockLoading(true);
       console.log('Restocking product:', selectedProduct.id, 'with quantity:', quantity);
-      
+
       // Calculate new stock (current + additional)
       const currentStock = selectedProduct.stock || selectedProduct.stockQty || 0;
       const newStockQuantity = currentStock + quantity;
-      
+
       // Update stock using the PATCH endpoint
       const response = await API.patch(`/products/${selectedProduct.id}/stock`, {
         stockQty: newStockQuantity
       });
-      
+
       console.log('Restock response:', response.data);
-      
+
       // Verify the update was successful
       if (response.data && (response.data.message || response.data.newStock !== undefined)) {
         // Update local state
-        setProducts(prev => 
-          prev.map(product => 
-            product.id === selectedProduct.id 
+        setProducts(prev =>
+          prev.map(product =>
+            product.id === selectedProduct.id
               ? { ...product, stock: newStockQuantity, stockQty: newStockQuantity }
               : product
           ).filter(product => {
@@ -175,12 +175,12 @@ export default function LowStockManagement() {
             return stock < 4; // Remove items that are no longer low stock
           })
         );
-        
+
         Alert.alert(
-          'Success', 
+          'Success',
           `✅ Successfully added ${quantity} units to ${selectedProduct.name || selectedProduct.productName}.\n\nNew stock level: ${newStockQuantity} units`,
-          [{ 
-            text: 'OK', 
+          [{
+            text: 'OK',
             onPress: () => {
               setRestockModal(false);
               // Refresh the data to ensure consistency
@@ -191,17 +191,17 @@ export default function LowStockManagement() {
       } else {
         throw new Error('Invalid response from server');
       }
-      
+
     } catch (error) {
       console.error('Restock error:', error);
-      
+
       let errorMessage = 'Failed to update stock. Please try again.';
-      
+
       if (error.response) {
         // Server responded with error
         console.error('Error response:', error.response.data);
         console.error('Error status:', error.response.status);
-        
+
         if (error.response.status === 404) {
           errorMessage = 'Product not found. Please refresh and try again.';
         } else if (error.response.status === 401) {
@@ -217,7 +217,7 @@ export default function LowStockManagement() {
         console.error('Error message:', error.message);
         errorMessage = `Error: ${error.message}`;
       }
-      
+
       Alert.alert('Restock Failed', errorMessage);
     } finally {
       setRestockLoading(false);
@@ -243,13 +243,13 @@ export default function LowStockManagement() {
       {/* Header */}
       <View className="px-5 py-4 shadow-lg bg-amber-500">
         <View className="flex-row items-center">
-          <TouchableOpacity 
+          <TouchableOpacity
             onPress={() => router.back()}
             className="p-2 mr-4 rounded-full bg-white/20"
           >
             <Ionicons name="arrow-back" size={24} color="white" />
           </TouchableOpacity>
-          
+
           <View className="flex-1">
             <Text className="text-xl font-bold text-white">
               Low Stock Management
@@ -258,8 +258,8 @@ export default function LowStockManagement() {
               {loading ? 'Loading...' : `${products.length} items need attention`}
             </Text>
           </View>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             onPress={onRefresh}
             className="p-2 rounded-full bg-white/20"
             disabled={loading}
@@ -270,7 +270,7 @@ export default function LowStockManagement() {
       </View>
 
       {/* Content */}
-      <ScrollView 
+      <ScrollView
         className="flex-1 px-4 py-4"
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
@@ -313,7 +313,7 @@ export default function LowStockManagement() {
             <Text className="mb-4 text-lg font-bold text-gray-900">
               Products Requiring Attention
             </Text>
-            
+
             {products.map((product, index) => {
               const currentStock = product.stock || product.stockQty || 0;
               const stockStatus = getStockStatus(currentStock);
@@ -324,13 +324,13 @@ export default function LowStockManagement() {
                       {/* Product Image */}
                       <View className="mr-4">
                         <Image
-                          source={{ 
+                          source={{
                             uri: (() => {
                               console.log(`🖼️ Processing image for ${product.name || product.productName}:`);
                               console.log(`   imageUrl: ${product.imageUrl}`);
                               console.log(`   image: ${product.image}`);
                               console.log(`   images: ${product.images}`);
-                              
+
                               // Try product.image first (from processed data)
                               if (product.image && product.image !== 'https://via.placeholder.com/150') {
                                 if (typeof product.image === 'string' && product.image.startsWith('http')) {
@@ -338,7 +338,7 @@ export default function LowStockManagement() {
                                   return product.image;
                                 }
                               }
-                              
+
                               // Try imageUrl field
                               if (product.imageUrl) {
                                 if (typeof product.imageUrl === 'string' && product.imageUrl.startsWith('http')) {
@@ -350,7 +350,7 @@ export default function LowStockManagement() {
                                   return fullUrl;
                                 }
                               }
-                              
+
                               // Try images field if imageUrl doesn't work
                               if (product.images) {
                                 let imgs = product.images;
@@ -371,7 +371,7 @@ export default function LowStockManagement() {
                                   }
                                 }
                               }
-                              
+
                               console.log(`   ❌ No valid image found, using test image`);
                               // Use a test image that definitely works to verify Image component is functioning
                               return 'https://picsum.photos/80/80?random=' + (product.id || Math.random());
@@ -388,7 +388,7 @@ export default function LowStockManagement() {
                           }}
                         />
                       </View>
-                      
+
                       {/* Product Details */}
                       <View className="flex-1">
                         <Text className="mb-1 text-lg font-bold text-gray-900" numberOfLines={2}>
@@ -400,13 +400,13 @@ export default function LowStockManagement() {
                         <Text className="mb-2 text-base font-semibold text-purple-600">
                           {formatCurrency(product.price || 0)}
                         </Text>
-                        
+
                         {/* Stock Status Badge */}
                         <View className={`inline-flex flex-row items-center px-3 py-1 rounded-full ${stockStatus.bgColor} self-start`}>
-                          <Ionicons 
-                            name={currentStock === 0 ? "close-circle" : "warning"} 
-                            size={16} 
-                            color={stockStatus.iconColor} 
+                          <Ionicons
+                            name={currentStock === 0 ? "close-circle" : "warning"}
+                            size={16}
+                            color={stockStatus.iconColor}
                           />
                           <Text className={`ml-1 text-sm font-medium ${stockStatus.color}`}>
                             {stockStatus.text}: {currentStock} units
@@ -414,7 +414,7 @@ export default function LowStockManagement() {
                         </View>
                       </View>
                     </View>
-                    
+
                     {/* Action Button */}
                     <TouchableOpacity
                       className="flex-row items-center justify-center py-3 mt-4 rounded-lg bg-amber-500"
@@ -446,14 +446,14 @@ export default function LowStockManagement() {
               <Text className="text-xl font-bold text-gray-900">
                 Restock Product
               </Text>
-              <TouchableOpacity 
+              <TouchableOpacity
                 onPress={() => setRestockModal(false)}
                 className="p-2 bg-gray-100 rounded-full"
               >
                 <Ionicons name="close" size={24} color="#6B7280" />
               </TouchableOpacity>
             </View>
-            
+
             {selectedProduct && (
               <>
                 <Text className="mb-2 text-lg font-medium text-gray-900">
@@ -462,7 +462,7 @@ export default function LowStockManagement() {
                 <Text className="mb-4 text-sm text-gray-600">
                   Current Stock: {selectedProduct.stock || selectedProduct.stockQty || 0} units
                 </Text>
-                
+
                 <Text className="mb-2 text-base font-medium text-gray-900">
                   Add Quantity:
                 </Text>
@@ -474,7 +474,7 @@ export default function LowStockManagement() {
                   keyboardType="numeric"
                   autoFocus
                 />
-                
+
                 <View className="flex-row space-x-3">
                   <TouchableOpacity
                     className="flex-1 py-3 border border-gray-300 rounded-lg"
@@ -485,7 +485,7 @@ export default function LowStockManagement() {
                       Cancel
                     </Text>
                   </TouchableOpacity>
-                  
+
                   <TouchableOpacity
                     className={`flex-1 py-3 rounded-lg ${restockLoading ? 'bg-amber-400' : 'bg-amber-500'}`}
                     onPress={confirmRestock}
